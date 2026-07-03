@@ -1,0 +1,10 @@
+{
+  "appTitle": "Smart Clinic",
+  "login": "Login",
+  "register": "Register",
+  "home": "Home",
+  "appointments": "Appointments",
+  "medicalRecords": "Medical Records",
+  "profile": "Profile",
+  "logout": "Logout"
+}

@@ -1,0 +1,272 @@
+import 'package:flutter/material.dart';
+import '../language/app_strings.dart';
+import '../services/api_service.dart';
+import '../services/user_session.dart';
+
+class BookAppointmentScreen extends StatefulWidget {
+  const BookAppointmentScreen({super.key});
+
+  @override
+  State<BookAppointmentScreen> createState() => _BookAppointmentScreenState();
+}
+
+class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
+  int? selectedDoctorId;
+  DateTime? selectedDate;
+  TimeOfDay? selectedTime;
+
+  bool isLoading = false;
+
+  Future<void> pickDate() async {
+    final date = await showDatePicker(
+      context: context,
+      initialDate: DateTime.now().add(const Duration(days: 1)),
+      firstDate: DateTime.now(),
+      lastDate: DateTime(2030),
+    );
+
+    if (date != null) {
+      setState(() {
+        selectedDate = date;
+      });
+    }
+  }
+
+  Future<void> pickTime() async {
+    final time = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.now(),
+    );
+
+    if (time != null) {
+      setState(() {
+        selectedTime = time;
+      });
+    }
+  }
+
+  void showMessage(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
+  }
+
+  DateTime getFinalAppointmentDate() {
+    return DateTime(
+      selectedDate!.year,
+      selectedDate!.month,
+      selectedDate!.day,
+      selectedTime!.hour,
+      selectedTime!.minute,
+    );
+  }
+
+  String formatSelectedDate() {
+    if (selectedDate == null) return AppStrings.selectDate;
+
+    return '${selectedDate!.year}-${selectedDate!.month.toString().padLeft(2, '0')}-${selectedDate!.day.toString().padLeft(2, '0')}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    const primary = Color(0xff5B2EFF);
+
+    return Scaffold(
+      backgroundColor: const Color(0xffF7F8FC),
+      appBar: AppBar(
+        title: Text(AppStrings.bookAppointment),
+        backgroundColor: Colors.white,
+        foregroundColor: Colors.black,
+        elevation: 0,
+      ),
+      body: Padding(
+        padding: const EdgeInsets.all(20),
+        child: FutureBuilder<List<dynamic>>(
+          future: ApiService.getDoctors(),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(
+                child: CircularProgressIndicator(),
+              );
+            }
+
+            if (snapshot.hasError) {
+              return Center(
+                child: Text(AppStrings.failedLoadDoctors),
+              );
+            }
+
+            final doctors = snapshot.data ?? [];
+
+            return Center(
+              child: Container(
+                width: 390,
+                padding: const EdgeInsets.all(22),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(24),
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      AppStrings.bookAppointment,
+                      style: const TextStyle(
+                        fontSize: 26,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 22),
+                    DropdownButtonFormField<int>(
+                      value: selectedDoctorId,
+                      decoration: InputDecoration(
+                        hintText: AppStrings.selectDoctor,
+                        prefixIcon: const Icon(Icons.person),
+                        filled: true,
+                        fillColor: const Color(0xffF7F8FC),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(16),
+                          borderSide: BorderSide.none,
+                        ),
+                      ),
+                      items: doctors.map((doctor) {
+                        return DropdownMenuItem<int>(
+                          value: doctor['doctorId'],
+                          child: Text(
+                            '${doctor['fullName']} - ${doctor['specialty']}',
+                          ),
+                        );
+                      }).toList(),
+                      onChanged: (value) {
+                        setState(() {
+                          selectedDoctorId = value;
+                        });
+                      },
+                    ),
+                    const SizedBox(height: 16),
+                    InkWell(
+                      onTap: pickDate,
+                      child: Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: const Color(0xffF7F8FC),
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.calendar_month),
+                            const SizedBox(width: 12),
+                            Text(formatSelectedDate()),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    InkWell(
+                      onTap: pickTime,
+                      child: Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: const Color(0xffF7F8FC),
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.access_time),
+                            const SizedBox(width: 12),
+                            Text(
+                              selectedTime == null
+                                  ? AppStrings.selectTime
+                                  : selectedTime!.format(context),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    SizedBox(
+                      width: double.infinity,
+                      height: 52,
+                      child: ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: primary,
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                        ),
+                        onPressed: isLoading
+                            ? null
+                            : () async {
+                          if (selectedDoctorId == null) {
+                            showMessage(AppStrings.pleaseSelectDoctor);
+                            return;
+                          }
+
+                          if (selectedDate == null) {
+                            showMessage(AppStrings.pleaseSelectDate);
+                            return;
+                          }
+
+                          if (selectedTime == null) {
+                            showMessage(AppStrings.pleaseSelectTime);
+                            return;
+                          }
+
+                          setState(() {
+                            isLoading = true;
+                          });
+
+                          try {
+                            await ApiService.bookAppointment(
+                              patientId: UserSession.userId ?? 1,
+                              doctorId: selectedDoctorId!,
+                              appointmentDate:
+                              getFinalAppointmentDate(),
+                            );
+
+                            if (context.mounted) {
+                              Navigator.pop(context);
+
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content:
+                                  Text(AppStrings.appointmentBooked),
+                                ),
+                              );
+                            }
+                          } catch (e) {
+                            if (context.mounted) {
+                              showMessage(AppStrings.appointmentFailed);
+                            }
+                          }
+
+                          if (mounted) {
+                            setState(() {
+                              isLoading = false;
+                            });
+                          }
+                        },
+                        child: isLoading
+                            ? const CircularProgressIndicator(
+                          color: Colors.white,
+                        )
+                            : Text(
+                          AppStrings.bookNow,
+                          style: const TextStyle(fontSize: 18),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
