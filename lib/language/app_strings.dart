@@ -22,8 +22,7 @@ class AppStrings {
   static String get users => isArabic ? 'المستخدمين' : 'Users';
   static String get adminDashboard => isArabic ? 'لوحة تحكم الأدمن' : 'Admin Dashboard';
   static String get overview => isArabic ? 'نظرة عامة' : 'Overview';
-  static String get management => isArabic ? 'الإدارة' : 'Management';
-  static String get settings => isArabic ? 'الإعدادات' : 'Settings';
+  static String get management => isArabic ? 'الإدارة' : 'Management';  static String get settings => isArabic ? 'الإعدادات' : 'Settings';
   static String get language => isArabic ? 'اللغة' : 'Language';
   static String get english => isArabic ? 'الإنجليزية' : 'English';
   static String get arabic => isArabic ? 'العربية' : 'Arabic';
@@ -202,4 +201,19 @@ class AppStrings {
   static String get today => isArabic ? 'اليوم' : 'Today';
   static String get total => isArabic ? 'الإجمالي' : 'Total';
   static String get patients => isArabic ? 'المرضى' : 'Patients';
+  static String get manageSpecialties => isArabic ? 'إدارة التخصصات' : 'Manage Specialties';
+  static String get manageSpecialtiesSubtitle => isArabic ? 'إضافة وتعديل وحذف التخصصات' : 'Add, edit, and delete specialties';
+  static String get addSpecialty => isArabic ? 'إضافة تخصص' : 'Add Specialty';
+  static String get editSpecialty => isArabic ? 'تعديل التخصص' : 'Edit Specialty';
+  static String get deleteSpecialty => isArabic ? 'حذف التخصص' : 'Delete Specialty';
+  static String get deleteSpecialtyConfirm => isArabic ? 'هل أنت متأكد أنك تريد حذف هذا التخصص؟' : 'Are you sure you want to delete this specialty?';
+  static String get specialtyName => isArabic ? 'اسم التخصص' : 'Specialty Name';
+  static String get chooseIcon => isArabic ? 'اختر الأيقونة' : 'Choose Icon';
+  static String get save => isArabic ? 'حفظ' : 'Save';
+  static String get specialtyAdded => isArabic ? 'تمت إضافة التخصص بنجاح' : 'Specialty added successfully';
+  static String get specialtyUpdated => isArabic ? 'تم تعديل التخصص بنجاح' : 'Specialty updated successfully';
+  static String get specialtyDeleted => isArabic ? 'تم حذف التخصص بنجاح' : 'Specialty deleted successfully';
+  static String get specialtyDeleteFailed => isArabic ? 'لا يمكن حذف التخصص لأنه مرتبط بأطباء' : 'Cannot delete specialty because it has doctors';
+  static String get noSpecialtiesFound => isArabic ? 'لا توجد تخصصات' : 'No specialties found';
+  static String get operationFailed => isArabic ? 'فشلت العملية' : 'Operation failed';
 }

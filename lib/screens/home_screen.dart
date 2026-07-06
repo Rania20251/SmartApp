@@ -1,5 +1,6 @@
-import 'dart:io';
+import 'dart:convert';
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import '../language/app_strings.dart';
 import '../services/api_service.dart';
@@ -15,27 +16,61 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   final searchController = TextEditingController();
-
   String searchText = '';
-  String selectedSpecialty = '';
+  int? selectedSpecialtyId;
+  final ScrollController specialtiesScrollController = ScrollController();
+
+  late Future<List<dynamic>> doctorsFuture;
+  late Future<List<dynamic>> specialtiesFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    doctorsFuture = ApiService.getDoctors();
+    specialtiesFuture = ApiService.getSpecialties();
+  }
 
   @override
   void dispose() {
     searchController.dispose();
+    specialtiesScrollController.dispose();
     super.dispose();
   }
 
   ImageProvider getUserImage() {
-    final image = UserSession.profileImage;
+    final image = UserSession.profileImage ?? '';
 
-    if (image != null && image.isNotEmpty) {
-      if (image.startsWith('assets/')) {
-        return AssetImage(image);
-      }
-      return FileImage(File(image));
+    if (image.startsWith('data:image')) {
+      return MemoryImage(base64Decode(image.split(',').last));
+    }
+
+    if (image.startsWith('http://') || image.startsWith('https://')) {
+      return NetworkImage(image);
+    }
+
+    if (image.startsWith('assets/')) {
+      return AssetImage(image);
     }
 
     return const AssetImage('assets/images/profile.jpg');
+  }
+
+  String getDoctorImage(dynamic doctor) {
+    final image = doctor['image']?.toString().trim() ?? '';
+    if (image.isNotEmpty && image != 'string') return image;
+    return 'assets/images/profile.jpg';
+  }
+
+  int getDoctorSpecialtyId(dynamic doctor) {
+    final directId = int.tryParse(doctor['specialtyId']?.toString() ?? '');
+    if (directId != null) return directId;
+
+    final nav = doctor['specialtyNavigation'];
+    if (nav is Map<String, dynamic>) {
+      return int.tryParse(nav['specialtyId']?.toString() ?? '') ?? 0;
+    }
+
+    return 0;
   }
 
   String normalizeText(String text) {
@@ -55,374 +90,384 @@ class _HomeScreenState extends State<HomeScreen> {
         .trim();
   }
 
-  void selectSpecialty(String specialty) {
-    setState(() {
-      selectedSpecialty = selectedSpecialty == specialty ? '' : specialty;
-    });
-  }
+  String translateSpecialty(String name) {
+    final value = name.toLowerCase().trim();
 
-  bool matchesSelectedSpecialty(String specialty) {
-    final value = normalizeText(specialty);
+    if (!AppStrings.isArabic) return name;
 
-    if (selectedSpecialty.isEmpty) return true;
+    if (value.contains('cardiology') || value.contains('heart')) return 'القلب';
+    if (value.contains('dentistry') || value.contains('dental')) return 'الأسنان';
+    if (value.contains('neurology') || value.contains('neuro')) return 'الأعصاب';
+    if (value.contains('pediatrics') || value.contains('pedia') || value.contains('child')) return 'الأطفال';
+    if (value.contains('dermatology') || value.contains('derma')) return 'الجلدية';
+    if (value.contains('ophthalmology') || value.contains('eye')) return 'العيون';
+    if (value.contains('surgery')) return 'الجراحة';
 
-    if (selectedSpecialty == 'Heart') {
-      return value.contains('heart') ||
-          value.contains('cardio') ||
-          value.contains('cardiology') ||
-          value.contains('قلب');
-    }
-
-    if (selectedSpecialty == 'Neuro') {
-      return value.contains('neuro') ||
-          value.contains('brain') ||
-          value.contains('neurology') ||
-          value.contains('اعصاب');
-    }
-
-    if (selectedSpecialty == 'Pedia') {
-      return value.contains('pedia') ||
-          value.contains('child') ||
-          value.contains('children') ||
-          value.contains('pediatrics') ||
-          value.contains('اطفال');
-    }
-
-    if (selectedSpecialty == 'Eye') {
-      return value.contains('eye') ||
-          value.contains('vision') ||
-          value.contains('ophthalmology') ||
-          value.contains('عيون');
-    }
-
-    return true;
-  }
-
-  bool matchesArabicEnglishSearch({
-    required String search,
-    required String name,
-    required String specialty,
-  }) {
-    final normalizedSearch = normalizeText(search);
-    final normalizedName = normalizeText(name);
-    final normalizedSpecialty = normalizeText(specialty);
-
-    if (normalizedSearch.isEmpty) return true;
-
-    return normalizedName.contains(normalizedSearch) ||
-        normalizedSpecialty.contains(normalizedSearch);
-  }
-
-  String getDoctorImage(dynamic doctor) {
-    final name = (doctor['fullName'] ?? '').toString().toLowerCase();
-
-    if (name.contains('أحمد الخطيب') || name.contains('ahmed')) {
-      return 'assets/images/doctor1.jpg';
-    }
-
-    if (name.contains('ساره') ||
-        name.contains('سارة') ||
-        name.contains('sara')) {
-      return 'assets/images/doctor2.jpg';
-    }
-
-    if (name.contains('عمر الشامي') ||
-        name.contains('omar') ||
-        name.contains('ali')) {
-      return 'assets/images/doctor3.jpg';
-    }
-
-    return 'assets/images/doctor4.jpg';
-  }
-
-  String specialtyTitle(String value) {
-    if (value == 'Heart') return AppStrings.heart;
-    if (value == 'Neuro') return AppStrings.neuro;
-    if (value == 'Pedia') return AppStrings.pedia;
-    if (value == 'Eye') return AppStrings.eye;
-    return value;
+    return name;
   }
 
   String translateDoctorName(String name) {
     if (!AppStrings.isArabic) return name;
 
-    final value = normalizeText(name);
+    final value = name.toLowerCase().trim();
 
-    if (value.contains('ahmed') || value.contains('خطيب')) {
-      return 'د. أحمد الخطيب';
+    if (value.contains('ahmad ali') || value.contains('ahmed ali')) {
+      return 'د. أحمد علي';
     }
 
-    if (value.contains('sara') ||
-        value.contains('ساره') ||
-        value.contains('سارة')) {
-      return 'د. سارة العلي';
+    if (value.contains('sarah ahmad') || value.contains('sara ahmad')) {
+      return 'د. سارة أحمد';
     }
 
-    if (value.contains('omar') || value.contains('شامي')) {
-      return 'د. عمر الشامي';
-    }
-
-    if (value.contains('nour') || value.contains('نور')) {
-      return 'د. نور الهاشمي';
-    }
-
-    return name;
+    return name
+        .replaceAll('Dr.', 'د.')
+        .replaceAll('dr.', 'د.')
+        .replaceAll('Ahmad', 'أحمد')
+        .replaceAll('Ahmed', 'أحمد')
+        .replaceAll('Ali', 'علي')
+        .replaceAll('Sara', 'سارة')
+        .replaceAll('Sarah', 'سارة')
+        .replaceAll('Mohammad', 'محمد')
+        .replaceAll('Mohammed', 'محمد')
+        .replaceAll('Omar', 'عمر')
+        .replaceAll('Nour', 'نور');
   }
 
-  String translateDoctorNameEnglish(String name) {
-    if (AppStrings.isArabic) return name;
-
-    final value = normalizeText(name);
-
-    if (value.contains('احمد') || value.contains('خطيب')) {
-      return 'Dr. Ahmed Al-Khatib';
+  IconData getIconData(String iconName) {
+    switch (iconName) {
+      case 'favorite':
+        return Icons.favorite;
+      case 'medical_services':
+        return Icons.medical_services;
+      case 'psychology':
+        return Icons.psychology;
+      case 'child_care':
+        return Icons.child_care;
+      case 'visibility':
+        return Icons.visibility;
+      case 'face':
+        return Icons.face;
+      case 'healing':
+        return Icons.healing;
+      case 'local_hospital':
+        return Icons.local_hospital;
+      case 'vaccines':
+        return Icons.vaccines;
+      case 'elderly':
+        return Icons.elderly;
+      default:
+        return Icons.medical_services;
     }
-
-    if (value.contains('ساره') || value.contains('سارة')) {
-      return 'Dr. Sara Al-Ali';
-    }
-
-    if (value.contains('عمر') || value.contains('شامي')) {
-      return 'Dr. Omar Al-Shami';
-    }
-
-    if (value.contains('نور')) {
-      return 'Dr. Nour Al-Hashemi';
-    }
-
-    return name;
   }
 
-  String doctorName(String name) {
-    return AppStrings.isArabic
-        ? translateDoctorName(name)
-        : translateDoctorNameEnglish(name);
-  }
+  bool matchesSearch({
+    required String search,
+    required String name,
+    required String specialty,
+  }) {
+    final normalizedSearch = normalizeText(search);
+    if (normalizedSearch.isEmpty) return true;
 
-  String doctorSpecialty(String specialty) {
-    final value = specialty.toLowerCase();
-
-    if (AppStrings.isArabic) {
-      if (value.contains('card')) return 'أمراض القلب';
-      if (value.contains('neuro')) return 'الأعصاب';
-      if (value.contains('pedia')) return 'طب الأطفال';
-      if (value.contains('derma')) return 'الجلدية';
-      if (value.contains('eye')) return 'العيون';
-    } else {
-      if (value.contains('القلب')) return 'Cardiology';
-      if (value.contains('الأعصاب')) return 'Neurology';
-      if (value.contains('الأطفال')) return 'Pediatrics';
-      if (value.contains('الجلدية')) return 'Dermatology';
-      if (value.contains('العيون')) return 'Eye';
-    }
-
-    return specialty;
+    return normalizeText(name).contains(normalizedSearch) ||
+        normalizeText(translateDoctorName(name)).contains(normalizedSearch) ||
+        normalizeText(specialty).contains(normalizedSearch) ||
+        normalizeText(translateSpecialty(specialty)).contains(normalizedSearch);
   }
 
   @override
   Widget build(BuildContext context) {
     const primary = Color(0xff5B2EFF);
 
-    return Scaffold(
-      backgroundColor: const Color(0xffF7F8FC),
-      body: SafeArea(
-        child: Center(
-          child: Container(
-            width: 390,
-            padding: const EdgeInsets.all(18),
-            child: ListView(
-              children: [
-                Row(
-                  children: [
-                    const Text(
-                      'MedLink',
-                      style: TextStyle(
-                        fontSize: 28,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const Spacer(),
-                    CircleAvatar(
-                      radius: 24,
-                      backgroundImage: getUserImage(),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 24),
-                Container(
-                  padding: const EdgeInsets.all(22),
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [Color(0xff6A3CFF), Color(0xff4D1FFF)],
-                    ),
-                    borderRadius: BorderRadius.circular(26),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+    return Directionality(
+      textDirection: AppStrings.isArabic ? TextDirection.rtl : TextDirection.ltr,
+      child: Scaffold(
+        backgroundColor: const Color(0xffF7F8FC),
+        body: SafeArea(
+          child: Center(
+            child: Container(
+              width: 390,
+              padding: const EdgeInsets.all(18),
+              child: ListView(
+                children: [
+                  Row(
                     children: [
-                      Text(
-                        AppStrings.needConsultation,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 26,
+                      const Text(
+                        'MedLink',
+                        style: TextStyle(
+                          fontSize: 28,
                           fontWeight: FontWeight.bold,
                         ),
                       ),
-                      const SizedBox(height: 10),
-                      Text(
-                        AppStrings.bookAppointmentMessage,
-                        style: const TextStyle(
-                          color: Colors.white70,
-                          fontSize: 15,
-                        ),
+                      const Spacer(),
+                      CircleAvatar(
+                        radius: 24,
+                        backgroundColor: const Color(0xffEDE7FF),
+                        backgroundImage: getUserImage(),
                       ),
                     ],
                   ),
-                ),
-                const SizedBox(height: 20),
-                TextField(
-                  controller: searchController,
-                  textDirection:
-                  AppStrings.isArabic ? TextDirection.rtl : TextDirection.ltr,
-                  onChanged: (value) {
-                    setState(() {
-                      searchText = value.trim();
-                    });
-                  },
-                  decoration: InputDecoration(
-                    hintText: AppStrings.searchDoctors,
-                    prefixIcon: const Icon(Icons.search),
-                    suffixIcon: searchText.isNotEmpty
-                        ? IconButton(
-                      icon: const Icon(Icons.clear),
-                      onPressed: () {
-                        searchController.clear();
-                        setState(() {
-                          searchText = '';
-                        });
-                      },
-                    )
-                        : null,
-                    filled: true,
-                    fillColor: Colors.white,
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(18),
-                      borderSide: BorderSide.none,
+                  const SizedBox(height: 24),
+                  Container(
+                    padding: const EdgeInsets.all(22),
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        colors: [Color(0xff6A3CFF), Color(0xff4D1FFF)],
+                      ),
+                      borderRadius: BorderRadius.circular(26),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: AppStrings.isArabic
+                          ? CrossAxisAlignment.end
+                          : CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          AppStrings.needConsultation,
+                          textAlign: AppStrings.isArabic
+                              ? TextAlign.right
+                              : TextAlign.left,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 26,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        Text(
+                          AppStrings.bookAppointmentMessage,
+                          textAlign: AppStrings.isArabic
+                              ? TextAlign.right
+                              : TextAlign.left,
+                          style: const TextStyle(
+                            color: Colors.white70,
+                            fontSize: 15,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                ),
-                const SizedBox(height: 28),
-                Text(
-                  AppStrings.specialties,
-                  style: const TextStyle(
-                    fontSize: 22,
-                    fontWeight: FontWeight.bold,
+                  const SizedBox(height: 20),
+                  TextField(
+                    controller: searchController,
+                    textDirection:
+                    AppStrings.isArabic ? TextDirection.rtl : TextDirection.ltr,
+                    onChanged: (value) {
+                      setState(() {
+                        searchText = value.trim();
+                      });
+                    },
+                    decoration: InputDecoration(
+                      hintText: AppStrings.searchDoctors,
+                      prefixIcon: const Icon(Icons.search),
+                      suffixIcon: searchText.isNotEmpty
+                          ? IconButton(
+                        icon: const Icon(Icons.clear),
+                        onPressed: () {
+                          searchController.clear();
+                          setState(() => searchText = '');
+                        },
+                      )
+                          : null,
+                      filled: true,
+                      fillColor: Colors.white,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(18),
+                        borderSide: BorderSide.none,
+                      ),
+                    ),
                   ),
-                ),
-                const SizedBox(height: 14),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    SpecialtyCard(
-                      icon: Icons.favorite,
-                      title: specialtyTitle('Heart'),
-                      isSelected: selectedSpecialty == 'Heart',
-                      onTap: () => selectSpecialty('Heart'),
+                  const SizedBox(height: 28),
+                  Text(
+                    AppStrings.specialties,
+                    textAlign:
+                    AppStrings.isArabic ? TextAlign.right : TextAlign.left,
+                    style: const TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.bold,
                     ),
-                    SpecialtyCard(
-                      icon: Icons.psychology,
-                      title: specialtyTitle('Neuro'),
-                      isSelected: selectedSpecialty == 'Neuro',
-                      onTap: () => selectSpecialty('Neuro'),
-                    ),
-                    SpecialtyCard(
-                      icon: Icons.child_care,
-                      title: specialtyTitle('Pedia'),
-                      isSelected: selectedSpecialty == 'Pedia',
-                      onTap: () => selectSpecialty('Pedia'),
-                    ),
-                    SpecialtyCard(
-                      icon: Icons.visibility,
-                      title: specialtyTitle('Eye'),
-                      isSelected: selectedSpecialty == 'Eye',
-                      onTap: () => selectSpecialty('Eye'),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 30),
-                Text(
-                  AppStrings.featuredDoctors,
-                  style: const TextStyle(
-                    fontSize: 22,
-                    fontWeight: FontWeight.bold,
                   ),
-                ),
-                const SizedBox(height: 18),
-                FutureBuilder<List<dynamic>>(
-                  future: ApiService.getDoctors(),
-                  builder: (context, snapshot) {
-                    if (snapshot.connectionState == ConnectionState.waiting) {
-                      return const Center(
-                        child: Padding(
-                          padding: EdgeInsets.all(20),
-                          child: CircularProgressIndicator(),
+                  const SizedBox(height: 14),
+                  FutureBuilder<List<dynamic>>(
+                    future: specialtiesFuture,
+                    builder: (context, snapshot) {
+                      final specialties = snapshot.data ?? [];
+
+                      if (snapshot.connectionState == ConnectionState.waiting) {
+                        return const SizedBox(
+                          height: 118,
+                          child: Center(child: CircularProgressIndicator()),
+                        );
+                      }
+
+                      if (specialties.isEmpty) {
+                        return Text(AppStrings.noSpecialtiesFound);
+                      }
+
+                      return SizedBox(
+                        height: 128,
+                        width: double.infinity,
+                        child: Directionality(
+                          textDirection: TextDirection.ltr,
+                          child: ScrollConfiguration(
+                            behavior: const MaterialScrollBehavior().copyWith(
+                              dragDevices: {
+                                PointerDeviceKind.touch,
+                                PointerDeviceKind.mouse,
+                                PointerDeviceKind.stylus,
+                                PointerDeviceKind.trackpad,
+                              },
+                            ),
+                            child: RawScrollbar(
+                              controller: specialtiesScrollController,
+                              thumbVisibility: true,
+                              trackVisibility: true,
+                              interactive: true,
+                              thickness: 6,
+                              radius: const Radius.circular(20),
+                              thumbColor: Colors.grey,
+                              trackColor: Colors.white,
+                              child: ListView.separated(
+                                controller: specialtiesScrollController,
+                                scrollDirection: Axis.horizontal,
+                                physics: const AlwaysScrollableScrollPhysics(
+                                  parent: BouncingScrollPhysics(),
+                                ),
+                                primary: false,
+                                padding: const EdgeInsets.only(
+                                  left: 2,
+                                  right: 2,
+                                  bottom: 14,
+                                ),
+                                itemCount: specialties.length,
+                                separatorBuilder: (_, __) =>
+                                const SizedBox(width: 12),
+                                itemBuilder: (context, index) {
+                                  final specialty = specialties[index];
+
+                                  final id = int.tryParse(
+                                    specialty['specialtyId']?.toString() ?? '',
+                                  ) ??
+                                      0;
+
+                                  final name =
+                                      specialty['name']?.toString() ?? '';
+                                  final icon =
+                                      specialty['icon']?.toString() ?? '';
+
+                                  return SpecialtyCard(
+                                    icon: getIconData(icon),
+                                    title: translateSpecialty(name),
+                                    isSelected: selectedSpecialtyId == id,
+                                    onTap: () {
+                                      setState(() {
+                                        selectedSpecialtyId =
+                                        selectedSpecialtyId == id
+                                            ? null
+                                            : id;
+                                      });
+                                    },
+                                  );
+                                },
+                              ),
+                            ),
+                          ),
                         ),
                       );
-                    }
+                    },
+                  ),
+                  const SizedBox(height: 30),
+                  Text(
+                    AppStrings.featuredDoctors,
+                    textAlign:
+                    AppStrings.isArabic ? TextAlign.right : TextAlign.left,
+                    style: const TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  FutureBuilder<List<List<dynamic>>>(
+                    future: Future.wait([doctorsFuture, specialtiesFuture]),
+                    builder: (context, snapshot) {
+                      if (snapshot.connectionState == ConnectionState.waiting) {
+                        return const Center(
+                          child: Padding(
+                            padding: EdgeInsets.all(20),
+                            child: CircularProgressIndicator(),
+                          ),
+                        );
+                      }
 
-                    if (snapshot.hasError) {
-                      return Text(
-                        AppStrings.failedLoadDoctors,
-                        style: const TextStyle(color: Colors.red),
-                      );
-                    }
+                      if (snapshot.hasError) {
+                        return Text(
+                          AppStrings.failedLoadDoctors,
+                          style: const TextStyle(color: Colors.red),
+                        );
+                      }
 
-                    final doctors = snapshot.data ?? [];
+                      final doctors = snapshot.data?[0] ?? [];
+                      final specialties = snapshot.data?[1] ?? [];
 
-                    final filteredDoctors = doctors.where((doctor) {
-                      final name = doctor['fullName']?.toString() ?? '';
-                      final specialty = doctor['specialty']?.toString() ?? '';
+                      final specialtyNames = <int, String>{};
 
-                      return matchesArabicEnglishSearch(
-                        search: searchText,
-                        name: name,
-                        specialty: specialty,
-                      ) &&
-                          matchesSelectedSpecialty(specialty);
-                    }).toList();
-
-                    if (filteredDoctors.isEmpty) {
-                      return Text(AppStrings.noDoctorsFound);
-                    }
-
-                    return Column(
-                      children: filteredDoctors.map((doctor) {
-                        final doctorId = int.tryParse(
-                          doctor['doctorId']?.toString() ?? '0',
+                      for (final specialty in specialties) {
+                        final id = int.tryParse(
+                          specialty['specialtyId']?.toString() ?? '',
                         ) ??
                             0;
+                        final name = specialty['name']?.toString() ?? '';
+                        specialtyNames[id] = name;
+                      }
 
-                        final imagePath = getDoctorImage(doctor);
+                      final filteredDoctors = doctors.where((doctor) {
+                        final name = doctor['fullName']?.toString() ?? '';
+                        final specialtyId = getDoctorSpecialtyId(doctor);
+                        final specialtyName =
+                            specialtyNames[specialtyId] ?? AppStrings.specialist;
 
-                        return DoctorCard(
-                          name: doctorName(
-                            doctor['fullName']?.toString() ??
-                                AppStrings.doctor,
-                          ),
-                          specialty: doctorSpecialty(
-                            doctor['specialty']?.toString() ??
-                                AppStrings.specialist,
-                          ),
-                          rating: '4.8',
-                          time: '10:30 AM',
-                          doctorId: doctorId,
-                          imagePath: imagePath,
-                        );
-                      }).toList(),
-                    );
-                  },
-                ),
-              ],
+                        final matchSpecialty = selectedSpecialtyId == null ||
+                            selectedSpecialtyId == specialtyId;
+
+                        return matchSpecialty &&
+                            matchesSearch(
+                              search: searchText,
+                              name: name,
+                              specialty: specialtyName,
+                            );
+                      }).toList();
+
+                      if (filteredDoctors.isEmpty) {
+                        return Text(AppStrings.noDoctorsFound);
+                      }
+
+                      return Column(
+                        children: filteredDoctors.map((doctor) {
+                          final doctorId = int.tryParse(
+                            doctor['doctorId']?.toString() ?? '0',
+                          ) ??
+                              0;
+
+                          final specialtyId = getDoctorSpecialtyId(doctor);
+                          final specialtyName =
+                              specialtyNames[specialtyId] ?? AppStrings.specialist;
+
+                          final imagePath = getDoctorImage(doctor);
+                          final originalName =
+                              doctor['fullName']?.toString() ?? AppStrings.doctor;
+
+                          return DoctorCard(
+                            name: translateDoctorName(originalName),
+                            specialty: translateSpecialty(specialtyName),
+                            rating: '4.8',
+                            time: '10:30 AM',
+                            doctorId: doctorId,
+                            imagePath: imagePath,
+                          );
+                        }).toList(),
+                      );
+                    },
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -453,21 +498,32 @@ class SpecialtyCard extends StatelessWidget {
       borderRadius: BorderRadius.circular(18),
       onTap: onTap,
       child: Container(
-        width: 78,
-        padding: const EdgeInsets.symmetric(vertical: 16),
+        width: 88,
+        height: 108,
+        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 6),
         decoration: BoxDecoration(
           color: isSelected ? primary : Colors.white,
           borderRadius: BorderRadius.circular(18),
         ),
         child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(icon, color: isSelected ? Colors.white : primary, size: 30),
+            Icon(icon, color: isSelected ? Colors.white : primary, size: 28),
             const SizedBox(height: 8),
-            Text(
-              title,
-              style: TextStyle(
-                fontSize: 13,
-                color: isSelected ? Colors.white : Colors.black,
+            Expanded(
+              child: Center(
+                child: Text(
+                  title,
+                  textAlign: TextAlign.center,
+                  maxLines: 2,
+                  softWrap: true,
+                  overflow: TextOverflow.visible,
+                  style: TextStyle(
+                    fontSize: 11,
+                    height: 1.2,
+                    color: isSelected ? Colors.white : Colors.black,
+                  ),
+                ),
               ),
             ),
           ],
@@ -494,6 +550,65 @@ class DoctorCard extends StatelessWidget {
     required this.doctorId,
     required this.imagePath,
   });
+
+  Widget doctorImage() {
+    final image = imagePath.trim();
+
+    if (image.startsWith('data:image')) {
+      try {
+        final base64Part = image.split(',').last;
+
+        return ClipOval(
+          child: Image.memory(
+            base64Decode(base64Part),
+            width: 60,
+            height: 60,
+            fit: BoxFit.cover,
+          ),
+        );
+      } catch (_) {
+        return defaultImage();
+      }
+    }
+
+    if (image.startsWith('http://') || image.startsWith('https://')) {
+      return ClipOval(
+        child: Image.network(
+          image,
+          key: ValueKey(image),
+          width: 60,
+          height: 60,
+          fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) => defaultImage(),
+        ),
+      );
+    }
+
+    if (image.startsWith('assets/')) {
+      return ClipOval(
+        child: Image.asset(
+          image,
+          width: 60,
+          height: 60,
+          fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) => defaultImage(),
+        ),
+      );
+    }
+
+    return defaultImage();
+  }
+
+  Widget defaultImage() {
+    return ClipOval(
+      child: Image.asset(
+        'assets/images/profile.jpg',
+        width: 60,
+        height: 60,
+        fit: BoxFit.cover,
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -525,18 +640,24 @@ class DoctorCard extends StatelessWidget {
         ),
         child: Row(
           children: [
-            CircleAvatar(
-              radius: 30,
-              backgroundColor: const Color(0xffEDE7FF),
-              backgroundImage: AssetImage(imagePath),
+            SizedBox(
+              width: 60,
+              height: 60,
+              child: doctorImage(),
             ),
             const SizedBox(width: 14),
             Expanded(
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+                crossAxisAlignment: AppStrings.isArabic
+                    ? CrossAxisAlignment.end
+                    : CrossAxisAlignment.start,
                 children: [
                   Text(
                     name,
+                    textAlign:
+                    AppStrings.isArabic ? TextAlign.right : TextAlign.left,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.bold,
@@ -545,10 +666,17 @@ class DoctorCard extends StatelessWidget {
                   const SizedBox(height: 4),
                   Text(
                     specialty,
+                    textAlign:
+                    AppStrings.isArabic ? TextAlign.right : TextAlign.left,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                     style: const TextStyle(color: Colors.grey),
                   ),
                   const SizedBox(height: 8),
                   Row(
+                    mainAxisAlignment: AppStrings.isArabic
+                        ? MainAxisAlignment.end
+                        : MainAxisAlignment.start,
                     children: [
                       const Icon(Icons.star, color: Colors.orange, size: 16),
                       Text(' $rating'),
@@ -564,34 +692,40 @@ class DoctorCard extends StatelessWidget {
                 ],
               ),
             ),
-            ElevatedButton(
-              onPressed: () async {
-                try {
-                  await ApiService.bookAppointment(
-                    patientId: UserSession.userId ?? 1,
-                    doctorId: doctorId,
-                    appointmentDate: DateTime.now().add(
-                      const Duration(days: 1),
-                    ),
-                  );
+            const SizedBox(width: 18),
+            SizedBox(
+              width: 74,
+              height: 38,
+              child: ElevatedButton(
+                onPressed: () async {
+                  try {
+                    await ApiService.bookAppointment(
+                      patientId: UserSession.userId ?? 1,
+                      doctorId: doctorId,
+                      appointmentDate: DateTime.now().add(
+                        const Duration(days: 1),
+                      ),
+                    );
 
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text(AppStrings.appointmentBooked)),
-                  );
-                } catch (e) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text(AppStrings.appointmentFailed)),
-                  );
-                }
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: primary,
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text(AppStrings.appointmentBooked)),
+                    );
+                  } catch (e) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text(AppStrings.appointmentFailed)),
+                    );
+                  }
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: primary,
+                  foregroundColor: Colors.white,
+                  padding: EdgeInsets.zero,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
                 ),
+                child: Text(AppStrings.book),
               ),
-              child: Text(AppStrings.book),
             ),
           ],
         ),

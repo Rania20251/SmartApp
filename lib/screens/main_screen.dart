@@ -18,18 +18,22 @@ class MainScreen extends StatefulWidget {
 class _MainScreenState extends State<MainScreen> {
   int currentIndex = 0;
 
-  final screens = const [
-    HomeScreen(),
-    DoctorsScreen(),
-    ScheduleScreen(),
-    RecordsScreen(),
-    NotificationsScreen(),
-    ProfileScreen(),
-  ];
+  void refreshLanguage() {
+    setState(() {});
+  }
 
   @override
   Widget build(BuildContext context) {
     const primary = Color(0xff5B2EFF);
+
+    final screens = [
+      const HomeScreen(),
+      const DoctorsScreen(),
+      const ScheduleScreen(),
+      const RecordsScreen(),
+      const NotificationsScreen(),
+      ProfileScreen(onLanguageChanged: refreshLanguage),
+    ];
 
     return Scaffold(
       body: screens[currentIndex],

@@ -5,6 +5,7 @@ import 'manage_doctors_screen.dart';
 import 'manage_appointments_screen.dart';
 import 'manage_users_screen.dart';
 import 'manage_medical_records_screen.dart';
+import 'manage_specialties_screen.dart';
 
 class AdminDashboardScreen extends StatelessWidget {
   const AdminDashboardScreen({super.key});
@@ -116,6 +117,18 @@ class AdminDashboardScreen extends StatelessWidget {
                   Navigator.push(
                     context,
                     MaterialPageRoute(builder: (_) => const ManageDoctorsScreen()),
+                  );
+                },
+              ),
+              ManageTile(
+                icon: Icons.category,
+                title: AppStrings.manageSpecialties,
+                subtitle: AppStrings.manageSpecialtiesSubtitle,
+                color: Colors.purple,
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const ManageSpecialtiesScreen()),
                   );
                 },
               ),

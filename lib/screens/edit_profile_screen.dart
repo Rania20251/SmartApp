@@ -1,4 +1,9 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
+
 import '../language/app_strings.dart';
 import '../services/api_service.dart';
 import '../services/user_session.dart';
@@ -18,7 +23,11 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   late TextEditingController genderController;
   late TextEditingController birthController;
 
+  final ImagePicker picker = ImagePicker();
+
   bool isLoading = false;
+  String profileImage = '';
+  Uint8List? selectedImageBytes;
 
   @override
   void initState() {
@@ -30,13 +39,55 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     addressController = TextEditingController(text: UserSession.address ?? '');
     genderController = TextEditingController(text: UserSession.gender ?? '');
     birthController = TextEditingController(text: UserSession.dateOfBirth ?? '');
+
+    profileImage = UserSession.profileImage ?? '';
+  }
+
+  ImageProvider? getProfileImage() {
+    if (selectedImageBytes != null) {
+      return MemoryImage(selectedImageBytes!);
+    }
+
+    if (profileImage.startsWith('data:image')) {
+      final base64Part = profileImage.split(',').last;
+      return MemoryImage(base64Decode(base64Part));
+    }
+
+    if (profileImage.startsWith('http')) {
+      return NetworkImage(profileImage);
+    }
+
+    if (profileImage.startsWith('assets/')) {
+      return AssetImage(profileImage);
+    }
+
+    return const AssetImage('assets/images/profile.jpg');
+  }
+
+  Future<void> pickProfileImage() async {
+    final XFile? picked = await picker.pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 75,
+    );
+
+    if (picked == null) return;
+
+    final bytes = await picked.readAsBytes();
+    final base64Image = base64Encode(bytes);
+
+    setState(() {
+      selectedImageBytes = bytes;
+      profileImage = 'data:image/jpeg;base64,$base64Image';
+    });
   }
 
   String? selectedGenderValue() {
     final gender = genderController.text.trim().toLowerCase();
 
     if (gender == 'male' || gender == 'ذكر') return 'Male';
-    if (gender == 'female' || gender == 'أنثى' || gender == 'انثى') return 'Female';
+    if (gender == 'female' || gender == 'أنثى' || gender == 'انثى') {
+      return 'Female';
+    }
 
     return null;
   }
@@ -73,14 +124,16 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
     final success = await ApiService.updateUser(
       userId: UserSession.userId!,
-      fullName: nameController.text,
-      email: emailController.text,
-      password: '123456',
-      phoneNumber: phoneController.text,
-      address: addressController.text,
-      gender: genderController.text,
-      dateOfBirth: birthController.text,
-      profileImage: UserSession.profileImage ?? 'assets/images/profile.jpg',
+      fullName: nameController.text.trim(),
+      email: emailController.text.trim(),
+      password: '',
+      phoneNumber: phoneController.text.trim(),
+      address: addressController.text.trim(),
+      gender: genderController.text.trim(),
+      dateOfBirth: birthController.text.trim(),
+      profileImage: profileImage.isEmpty
+          ? 'assets/images/profile.jpg'
+          : profileImage,
     );
 
     if (!mounted) return;
@@ -88,12 +141,13 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     setState(() => isLoading = false);
 
     if (success) {
-      UserSession.fullName = nameController.text;
-      UserSession.email = emailController.text;
-      UserSession.phoneNumber = phoneController.text;
-      UserSession.address = addressController.text;
-      UserSession.gender = genderController.text;
-      UserSession.dateOfBirth = birthController.text;
+      UserSession.fullName = nameController.text.trim();
+      UserSession.email = emailController.text.trim();
+      UserSession.phoneNumber = phoneController.text.trim();
+      UserSession.address = addressController.text.trim();
+      UserSession.gender = genderController.text.trim();
+      UserSession.dateOfBirth = birthController.text.trim();
+      UserSession.profileImage = profileImage;
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(AppStrings.profileUpdated)),
@@ -136,15 +190,31 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           padding: const EdgeInsets.all(20),
           child: ListView(
             children: [
+              const SizedBox(height: 16),
+
+              Center(
+                child: CircleAvatar(
+                  radius: 55,
+                  backgroundColor: const Color(0xffEDE7FF),
+                  backgroundImage: getProfileImage(),
+                ),
+              ),
+
+              const SizedBox(height: 10),
+
+              OutlinedButton.icon(
+                onPressed: isLoading ? null : pickProfileImage,
+                icon: const Icon(Icons.image),
+                label: const Text('Choose Profile Image'),
+              ),
+
               const SizedBox(height: 20),
 
               buildField(AppStrings.fullName, Icons.person, nameController),
               buildField(AppStrings.email, Icons.email, emailController),
               buildField(AppStrings.phoneNumber, Icons.phone, phoneController),
               buildField(AppStrings.address, Icons.location_on, addressController),
-
               buildGenderDropdown(),
-
               buildDatePickerField(),
 
               const SizedBox(height: 20),

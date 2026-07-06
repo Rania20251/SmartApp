@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import '../language/app_strings.dart';
 import '../services/api_service.dart';
@@ -40,27 +42,54 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
 
   String formatDate(dynamic value) {
     final d = parseDate(value);
-    return '${d.day.toString().padLeft(2, '0')} Jun ${d.year}';
+
+    final monthsEn = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
+
+    final monthsAr = [
+      'يناير',
+      'فبراير',
+      'مارس',
+      'أبريل',
+      'مايو',
+      'يونيو',
+      'يوليو',
+      'أغسطس',
+      'سبتمبر',
+      'أكتوبر',
+      'نوفمبر',
+      'ديسمبر',
+    ];
+
+    final monthName =
+    AppStrings.isArabic ? monthsAr[d.month - 1] : monthsEn[d.month - 1];
+
+    return '${d.day.toString().padLeft(2, '0')} $monthName ${d.year}';
   }
 
   String formatTime(dynamic value) {
     final d = parseDate(value);
-    final hour = d.hour == 0
-        ? 12
-        : d.hour > 12
-        ? d.hour - 12
-        : d.hour;
+    final hour = d.hour == 0 ? 12 : d.hour > 12 ? d.hour - 12 : d.hour;
     final period = d.hour >= 12 ? 'PM' : 'AM';
-
     return '${hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')} $period';
   }
 
   bool isUpcoming(dynamic appointment) {
     final date = parseDate(appointment['appointmentDate']);
     final status = appointment['status']?.toString().toLowerCase() ?? '';
-
     if (status == 'completed' || status == 'cancelled') return false;
-
     return date.isAfter(DateTime.now());
   }
 
@@ -73,146 +102,113 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
     filtered.sort((a, b) {
       final dateA = parseDate(a['appointmentDate']);
       final dateB = parseDate(b['appointmentDate']);
-
-      return showUpcoming
-          ? dateA.compareTo(dateB)
-          : dateB.compareTo(dateA);
+      return showUpcoming ? dateA.compareTo(dateB) : dateB.compareTo(dateA);
     });
 
     return filtered;
-  }
-
-  String getDoctorImageByName(String name, int doctorId) {
-    final value = name.toLowerCase();
-
-    if (doctorId == 1 || value.contains('ahmed') || value.contains('أحمد')) {
-      return 'assets/images/doctor1.jpg';
-    }
-
-    if (doctorId == 2 ||
-        value.contains('sara') ||
-        value.contains('sarah') ||
-        value.contains('سارة') ||
-        value.contains('ساره')) {
-      return 'assets/images/doctor2.jpg';
-    }
-
-    if (doctorId == 3 || value.contains('omar') || value.contains('عمر')) {
-      return 'assets/images/doctor3.jpg';
-    }
-
-    return 'assets/images/doctor4.jpg';
   }
 
   @override
   Widget build(BuildContext context) {
     const primary = Color(0xff5B2EFF);
 
-    return Scaffold(
-      backgroundColor: const Color(0xffF7F8FC),
-      appBar: AppBar(
-        title: Text(AppStrings.isArabic ? 'مواعيدي' : 'My Appointments'),
-        backgroundColor: Colors.white,
-        foregroundColor: Colors.black,
-        elevation: 0,
-      ),
-      body: FutureBuilder<List<dynamic>>(
-        future: appointmentsFuture,
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
+    return Directionality(
+      textDirection: AppStrings.isArabic ? TextDirection.rtl : TextDirection.ltr,
+      child: Scaffold(
+        backgroundColor: const Color(0xffF7F8FC),
+        appBar: AppBar(
+          title: Text(AppStrings.isArabic ? 'مواعيدي' : 'My Appointments'),
+          backgroundColor: Colors.white,
+          foregroundColor: Colors.black,
+          elevation: 0,
+        ),
+        body: FutureBuilder<List<dynamic>>(
+          future: appointmentsFuture,
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
+            }
 
-          if (snapshot.hasError) {
-            return Center(
-              child: Text(
-                AppStrings.failedLoadAppointments,
-                style: const TextStyle(color: Colors.red),
+            if (snapshot.hasError) {
+              return Center(
+                child: Text(
+                  AppStrings.failedLoadAppointments,
+                  style: const TextStyle(color: Colors.red),
+                ),
+              );
+            }
+
+            final appointments = filteredAppointments(snapshot.data ?? []);
+
+            return ListView(
+              padding: const EdgeInsets.all(18),
+              children: [
+                Container(
+                  height: 52,
+                  padding: const EdgeInsets.all(5),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(18),
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: tabButton(
+                          title: AppStrings.isArabic ? 'القادمة' : 'Upcoming',
+                          selected: showUpcoming,
+                          onTap: () => setState(() => showUpcoming = true),
+                        ),
+                      ),
+                      Expanded(
+                        child: tabButton(
+                          title: AppStrings.isArabic ? 'السابقة' : 'Past',
+                          selected: !showUpcoming,
+                          onTap: () => setState(() => showUpcoming = false),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 20),
+                if (appointments.isEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 80),
+                    child: Center(child: Text(AppStrings.noAppointmentsFound)),
+                  )
+                else
+                  ...appointments.map((appointment) {
+                    final doctorId = int.tryParse(
+                      appointment['doctorId']?.toString() ?? '0',
+                    ) ??
+                        0;
+
+                    return AppointmentCard(
+                      appointment: appointment,
+                      doctorId: doctorId,
+                      date: formatDate(appointment['appointmentDate']),
+                      time: formatTime(appointment['appointmentDate']),
+                      onDeleted: refreshAppointments,
+                    );
+                  }),
+              ],
+            );
+          },
+        ),
+        floatingActionButton: FloatingActionButton(
+          backgroundColor: primary,
+          foregroundColor: Colors.white,
+          onPressed: () async {
+            await Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => const BookAppointmentScreen(),
               ),
             );
-          }
 
-          final appointments = filteredAppointments(snapshot.data ?? []);
-
-          return ListView(
-            padding: const EdgeInsets.all(18),
-            children: [
-              Container(
-                height: 52,
-                padding: const EdgeInsets.all(5),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(18),
-                ),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: tabButton(
-                        title: AppStrings.isArabic ? 'القادمة' : 'Upcoming',
-                        selected: showUpcoming,
-                        onTap: () {
-                          setState(() {
-                            showUpcoming = true;
-                          });
-                        },
-                      ),
-                    ),
-                    Expanded(
-                      child: tabButton(
-                        title: AppStrings.isArabic ? 'السابقة' : 'Past',
-                        selected: !showUpcoming,
-                        onTap: () {
-                          setState(() {
-                            showUpcoming = false;
-                          });
-                        },
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 20),
-              if (appointments.isEmpty)
-                Padding(
-                  padding: const EdgeInsets.only(top: 80),
-                  child: Center(
-                    child: Text(AppStrings.noAppointmentsFound),
-                  ),
-                )
-              else
-                ...appointments.map((appointment) {
-                  final doctorId = int.tryParse(
-                    appointment['doctorId']?.toString() ?? '0',
-                  ) ??
-                      0;
-
-                  return AppointmentCard(
-                    appointment: appointment,
-                    doctorId: doctorId,
-                    date: formatDate(appointment['appointmentDate']),
-                    time: formatTime(appointment['appointmentDate']),
-                    getImagePath: getDoctorImageByName,
-                    onDeleted: refreshAppointments,
-                  );
-                }),
-            ],
-          );
-        },
-      ),
-      floatingActionButton: FloatingActionButton(
-        backgroundColor: primary,
-        foregroundColor: Colors.white,
-        onPressed: () async {
-          await Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => const BookAppointmentScreen(),
-            ),
-          );
-
-          refreshAppointments();
-        },
-        child: const Icon(Icons.add),
+            refreshAppointments();
+          },
+          child: const Icon(Icons.add),
+        ),
       ),
     );
   }
@@ -250,7 +246,6 @@ class AppointmentCard extends StatelessWidget {
   final int doctorId;
   final String date;
   final String time;
-  final String Function(String doctorName, int doctorId) getImagePath;
   final VoidCallback onDeleted;
 
   const AppointmentCard({
@@ -259,59 +254,100 @@ class AppointmentCard extends StatelessWidget {
     required this.doctorId,
     required this.date,
     required this.time,
-    required this.getImagePath,
     required this.onDeleted,
   });
+
+  String normalizeImagePath(String? image) {
+    final value = image?.trim() ?? '';
+
+    if (value.isEmpty || value == 'string') {
+      return 'assets/images/profile.jpg';
+    }
+
+    return value;
+  }
+
+  Widget doctorImage(String imagePath) {
+    final image = imagePath.trim();
+
+    if (image.startsWith('data:image')) {
+      try {
+        final base64Part = image.split(',').last;
+        return ClipOval(
+          child: Image.memory(
+            base64Decode(base64Part),
+            width: 56,
+            height: 56,
+            fit: BoxFit.cover,
+          ),
+        );
+      } catch (_) {
+        return defaultDoctorImage();
+      }
+    }
+
+    if (image.startsWith('http://') || image.startsWith('https://')) {
+      return ClipOval(
+        child: Image.network(
+          image,
+          width: 56,
+          height: 56,
+          fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) => defaultDoctorImage(),
+        ),
+      );
+    }
+
+    if (image.startsWith('assets/')) {
+      return ClipOval(
+        child: Image.asset(
+          image,
+          width: 56,
+          height: 56,
+          fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) => defaultDoctorImage(),
+        ),
+      );
+    }
+
+    return defaultDoctorImage();
+  }
+
+  Widget defaultDoctorImage() {
+    return ClipOval(
+      child: Image.asset(
+        'assets/images/profile.jpg',
+        width: 56,
+        height: 56,
+        fit: BoxFit.cover,
+      ),
+    );
+  }
 
   String doctorNameByLanguage(String name) {
     final value = name.toLowerCase();
 
     if (AppStrings.isArabic) {
-      if (doctorId == 1 || value.contains('ahmed') || value.contains('أحمد')) {
-        return 'د. أحمد الخطيب';
+      if (value.contains('ahmad ali') || value.contains('ahmed ali')) {
+        return 'د. أحمد علي';
       }
 
-      if (doctorId == 2 ||
-          value.contains('sara') ||
-          value.contains('sarah') ||
-          value.contains('سارة') ||
-          value.contains('ساره')) {
-        return 'د. سارة العلي';
+      if (value.contains('sarah ahmad') || value.contains('sara ahmad')) {
+        return 'د. سارة أحمد';
       }
 
-      if (doctorId == 3 || value.contains('omar') || value.contains('عمر')) {
-        return 'د. عمر الشامي';
-      }
-
-      if (doctorId == 4 ||
-          value.contains('nour') ||
-          value.contains('noor') ||
-          value.contains('نور')) {
-        return 'د. نور الهاشمي';
-      }
-    } else {
-      if (doctorId == 1 || value.contains('ahmed') || value.contains('أحمد')) {
-        return 'Dr. Ahmed Al-Khatib';
-      }
-
-      if (doctorId == 2 ||
-          value.contains('sara') ||
-          value.contains('sarah') ||
-          value.contains('سارة') ||
-          value.contains('ساره')) {
-        return 'Dr. Sara Al-Ali';
-      }
-
-      if (doctorId == 3 || value.contains('omar') || value.contains('عمر')) {
-        return 'Dr. Omar Al-Shami';
-      }
-
-      if (doctorId == 4 ||
-          value.contains('nour') ||
-          value.contains('noor') ||
-          value.contains('نور')) {
-        return 'Dr. Nour Al-Hashemi';
-      }
+      return name
+          .replaceAll('Dr.', 'د.')
+          .replaceAll('dr.', 'د.')
+          .replaceAll('Ahmad', 'أحمد')
+          .replaceAll('Ahmed', 'أحمد')
+          .replaceAll('Ali', 'علي')
+          .replaceAll('Sara', 'سارة')
+          .replaceAll('Sarah', 'سارة')
+          .replaceAll('Mohammad', 'محمد')
+          .replaceAll('Mohammed', 'محمد')
+          .replaceAll('Omar', 'عمر')
+          .replaceAll('Nour', 'نور');
     }
 
     return name;
@@ -321,48 +357,48 @@ class AppointmentCard extends StatelessWidget {
     final value = specialty.toLowerCase();
 
     if (AppStrings.isArabic) {
-      if (value.contains('card') || value.contains('قلب')) {
-        return 'أمراض القلب';
+      if (value.contains('card') || value.contains('heart') || value.contains('قلب')) {
+        return 'القلب';
       }
-      if (value.contains('neuro') ||
-          value.contains('أعصاب') ||
-          value.contains('اعصاب')) {
+      if (value.contains('dent') || value.contains('dental') || value.contains('أسنان') || value.contains('اسنان')) {
+        return 'الأسنان';
+      }
+      if (value.contains('neuro') || value.contains('أعصاب') || value.contains('اعصاب')) {
         return 'الأعصاب';
       }
-      if (value.contains('pedia') ||
-          value.contains('أطفال') ||
-          value.contains('اطفال')) {
-        return 'طب الأطفال';
+      if (value.contains('pedia') || value.contains('child') || value.contains('أطفال') || value.contains('اطفال')) {
+        return 'الأطفال';
       }
       if (value.contains('derma') || value.contains('جلدية')) {
         return 'الجلدية';
       }
-      if (value.contains('eye') ||
-          value.contains('oph') ||
-          value.contains('عيون')) {
+      if (value.contains('eye') || value.contains('oph') || value.contains('عيون')) {
         return 'العيون';
       }
+      if (value.contains('surgery') || value.contains('جراحة')) {
+        return 'الجراحة';
+      }
     } else {
-      if (value.contains('card') || value.contains('قلب')) {
+      if (value.contains('card') || value.contains('heart') || value.contains('قلب')) {
         return 'Cardiology';
       }
-      if (value.contains('neuro') ||
-          value.contains('أعصاب') ||
-          value.contains('اعصاب')) {
+      if (value.contains('dent') || value.contains('dental') || value.contains('أسنان') || value.contains('اسنان')) {
+        return 'Dentistry';
+      }
+      if (value.contains('neuro') || value.contains('أعصاب') || value.contains('اعصاب')) {
         return 'Neurology';
       }
-      if (value.contains('pedia') ||
-          value.contains('أطفال') ||
-          value.contains('اطفال')) {
+      if (value.contains('pedia') || value.contains('child') || value.contains('أطفال') || value.contains('اطفال')) {
         return 'Pediatrics';
       }
       if (value.contains('derma') || value.contains('جلدية')) {
         return 'Dermatology';
       }
-      if (value.contains('eye') ||
-          value.contains('oph') ||
-          value.contains('عيون')) {
+      if (value.contains('eye') || value.contains('oph') || value.contains('عيون')) {
         return 'Ophthalmology';
+      }
+      if (value.contains('surgery') || value.contains('جراحة')) {
+        return 'Surgery';
       }
     }
 
@@ -394,163 +430,161 @@ class AppointmentCard extends StatelessWidget {
 
     final status = appointment['status']?.toString() ?? 'Pending';
 
-    return FutureBuilder<dynamic>(
-      future: ApiService.getDoctorById(doctorId),
-      builder: (context, snapshot) {
-        String rawDoctorName = AppStrings.doctor;
-        String rawSpecialty = AppStrings.specialist;
+    String rawDoctorName =
+        appointment['doctorName']?.toString() ??
+            appointment['DoctorName']?.toString() ??
+            appointment['fullName']?.toString() ??
+            appointment['FullName']?.toString() ??
+            AppStrings.doctor;
 
-        if (snapshot.hasData && snapshot.data != null) {
-          rawDoctorName =
-              snapshot.data['fullName']?.toString() ?? AppStrings.doctor;
-          rawSpecialty =
-              snapshot.data['specialty']?.toString() ?? AppStrings.specialist;
-        }
+    String rawSpecialty =
+        appointment['specialtyName']?.toString() ??
+            appointment['SpecialtyName']?.toString() ??
+            appointment['specialty']?.toString() ??
+            appointment['Specialty']?.toString() ??
+            AppStrings.specialist;
 
-        final shownDoctorName = doctorNameByLanguage(rawDoctorName);
-        final shownSpecialty = specialtyByLanguage(rawSpecialty);
-        final imagePath = getImagePath(rawDoctorName, doctorId);
+    String imagePath = normalizeImagePath(
+      appointment['doctorImage']?.toString() ??
+          appointment['DoctorImage']?.toString() ??
+          appointment['image']?.toString() ??
+          appointment['Image']?.toString(),
+    );
 
-        return Container(
-          margin: const EdgeInsets.only(bottom: 16),
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(22),
+    final shownDoctorName = doctorNameByLanguage(rawDoctorName);
+    final shownSpecialty = specialtyByLanguage(rawSpecialty);
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(22),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 56,
+            height: 56,
+            child: doctorImage(imagePath),
           ),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              CircleAvatar(
-                radius: 28,
-                backgroundColor: const Color(0xffEDE7FF),
-                backgroundImage: AssetImage(imagePath),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: AppStrings.isArabic
-                      ? CrossAxisAlignment.end
-                      : CrossAxisAlignment.start,
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: AppStrings.isArabic
+                  ? CrossAxisAlignment.end
+                  : CrossAxisAlignment.start,
+              children: [
+                Text(
+                  shownDoctorName,
+                  textDirection: AppStrings.isArabic
+                      ? TextDirection.rtl
+                      : TextDirection.ltr,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  shownSpecialty,
+                  textDirection: AppStrings.isArabic
+                      ? TextDirection.rtl
+                      : TextDirection.ltr,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(color: Colors.grey),
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  mainAxisAlignment: AppStrings.isArabic
+                      ? MainAxisAlignment.end
+                      : MainAxisAlignment.start,
                   children: [
-                    Text(
-                      shownDoctorName,
-                      textDirection: AppStrings.isArabic
-                          ? TextDirection.rtl
-                          : TextDirection.ltr,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                      ),
+                    const Icon(
+                      Icons.calendar_month,
+                      size: 15,
+                      color: Colors.grey,
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      shownSpecialty,
-                      textDirection: AppStrings.isArabic
-                          ? TextDirection.rtl
-                          : TextDirection.ltr,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(color: Colors.grey),
-                    ),
-                    const SizedBox(height: 8),
-                    Row(
-                      mainAxisAlignment: AppStrings.isArabic
-                          ? MainAxisAlignment.end
-                          : MainAxisAlignment.start,
-                      children: [
-                        const Icon(
-                          Icons.calendar_month,
-                          size: 15,
-                          color: Colors.grey,
-                        ),
-                        const SizedBox(width: 5),
-                        Text(
-                          date,
-                          style: const TextStyle(fontSize: 12),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 5),
-                    Row(
-                      mainAxisAlignment: AppStrings.isArabic
-                          ? MainAxisAlignment.end
-                          : MainAxisAlignment.start,
-                      children: [
-                        const Icon(
-                          Icons.access_time,
-                          size: 15,
-                          color: Colors.grey,
-                        ),
-                        const SizedBox(width: 5),
-                        Text(
-                          time,
-                          style: const TextStyle(fontSize: 12),
-                        ),
-                      ],
-                    ),
+                    const SizedBox(width: 5),
+                    Text(date, style: const TextStyle(fontSize: 12)),
                   ],
                 ),
-              ),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  PopupMenuButton<String>(
-                    icon: const Icon(Icons.more_vert),
-                    onSelected: (value) async {
-                      if (value == 'delete') {
-                        try {
-                          await ApiService.deleteAppointment(appointmentId);
-                          onDeleted();
+                const SizedBox(height: 5),
+                Row(
+                  mainAxisAlignment: AppStrings.isArabic
+                      ? MainAxisAlignment.end
+                      : MainAxisAlignment.start,
+                  children: [
+                    const Icon(
+                      Icons.access_time,
+                      size: 15,
+                      color: Colors.grey,
+                    ),
+                    const SizedBox(width: 5),
+                    Text(time, style: const TextStyle(fontSize: 12)),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              PopupMenuButton<String>(
+                icon: const Icon(Icons.more_vert),
+                onSelected: (value) async {
+                  if (value == 'delete') {
+                    try {
+                      await ApiService.deleteAppointment(appointmentId);
+                      onDeleted();
 
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text(AppStrings.appointmentDeleted),
-                            ),
-                          );
-                        } catch (e) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content:
-                              Text(AppStrings.deleteAppointmentFailed),
-                            ),
-                          );
-                        }
-                      }
-                    },
-                    itemBuilder: (context) => [
-                      PopupMenuItem(
-                        value: 'delete',
-                        child: Text(AppStrings.delete),
-                      ),
-                    ],
-                  ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 5,
-                    ),
-                    decoration: BoxDecoration(
-                      color: primary.withOpacity(.10),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Text(
-                      statusText(status),
-                      style: const TextStyle(
-                        color: primary,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 11,
-                      ),
-                    ),
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(AppStrings.appointmentDeleted),
+                        ),
+                      );
+                    } catch (e) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(AppStrings.deleteAppointmentFailed),
+                        ),
+                      );
+                    }
+                  }
+                },
+                itemBuilder: (context) => [
+                  PopupMenuItem(
+                    value: 'delete',
+                    child: Text(AppStrings.delete),
                   ),
                 ],
               ),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 5,
+                ),
+                decoration: BoxDecoration(
+                  color: primary.withOpacity(.10),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  statusText(status),
+                  style: const TextStyle(
+                    color: primary,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 11,
+                  ),
+                ),
+              ),
             ],
           ),
-        );
-      },
+        ],
+      ),
     );
   }
 }

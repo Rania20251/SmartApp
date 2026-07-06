@@ -50,6 +50,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
       if (user != null) {
         await UserSession.saveUser(user);
+        await UserSession.loadUser();
 
         if (!mounted) return;
 

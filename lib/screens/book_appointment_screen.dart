@@ -64,7 +64,58 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
   String formatSelectedDate() {
     if (selectedDate == null) return AppStrings.selectDate;
 
-    return '${selectedDate!.year}-${selectedDate!.month.toString().padLeft(2, '0')}-${selectedDate!.day.toString().padLeft(2, '0')}';
+    final year = selectedDate!.year;
+    final month = selectedDate!.month.toString().padLeft(2, '0');
+    final day = selectedDate!.day.toString().padLeft(2, '0');
+
+    return '$year-$month-$day';
+  }
+
+  Future<void> submitAppointment() async {
+    if (selectedDoctorId == null) {
+      showMessage(AppStrings.pleaseSelectDoctor);
+      return;
+    }
+
+    if (selectedDate == null) {
+      showMessage(AppStrings.pleaseSelectDate);
+      return;
+    }
+
+    if (selectedTime == null) {
+      showMessage(AppStrings.pleaseSelectTime);
+      return;
+    }
+
+    setState(() {
+      isLoading = true;
+    });
+
+    try {
+      await ApiService.bookAppointment(
+        patientId: UserSession.userId ?? 1,
+        doctorId: selectedDoctorId!,
+        appointmentDate: getFinalAppointmentDate(),
+      );
+
+      if (!mounted) return;
+
+      Navigator.pop(context);
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(AppStrings.appointmentBooked)),
+      );
+    } catch (e) {
+      if (mounted) {
+        showMessage(AppStrings.appointmentFailed);
+      }
+    }
+
+    if (mounted) {
+      setState(() {
+        isLoading = false;
+      });
+    }
   }
 
   @override
@@ -85,18 +136,18 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
           future: ApiService.getDoctors(),
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
-              return const Center(
-                child: CircularProgressIndicator(),
-              );
+              return const Center(child: CircularProgressIndicator());
             }
 
             if (snapshot.hasError) {
-              return Center(
-                child: Text(AppStrings.failedLoadDoctors),
-              );
+              return Center(child: Text(AppStrings.failedLoadDoctors));
             }
 
             final doctors = snapshot.data ?? [];
+
+            if (doctors.isEmpty) {
+              return Center(child: Text(AppStrings.noDoctorsFound));
+            }
 
             return Center(
               child: Container(
@@ -117,7 +168,9 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
                         fontWeight: FontWeight.bold,
                       ),
                     ),
+
                     const SizedBox(height: 22),
+
                     DropdownButtonFormField<int>(
                       value: selectedDoctorId,
                       decoration: InputDecoration(
@@ -130,12 +183,21 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
                           borderSide: BorderSide.none,
                         ),
                       ),
-                      items: doctors.map((doctor) {
+                      items: doctors.map<DropdownMenuItem<int>>((doctor) {
+                        final doctorId = int.tryParse(
+                          doctor['doctorId']?.toString() ?? '0',
+                        ) ??
+                            0;
+
+                        final fullName =
+                            doctor['fullName']?.toString() ?? AppStrings.doctor;
+
+                        final specialty = doctor['specialty']?.toString() ??
+                            AppStrings.specialist;
+
                         return DropdownMenuItem<int>(
-                          value: doctor['doctorId'],
-                          child: Text(
-                            '${doctor['fullName']} - ${doctor['specialty']}',
-                          ),
+                          value: doctorId,
+                          child: Text('$fullName - $specialty'),
                         );
                       }).toList(),
                       onChanged: (value) {
@@ -144,7 +206,9 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
                         });
                       },
                     ),
+
                     const SizedBox(height: 16),
+
                     InkWell(
                       onTap: pickDate,
                       child: Container(
@@ -163,7 +227,9 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
                         ),
                       ),
                     ),
+
                     const SizedBox(height: 16),
+
                     InkWell(
                       onTap: pickTime,
                       child: Container(
@@ -186,7 +252,9 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
                         ),
                       ),
                     ),
+
                     const SizedBox(height: 24),
+
                     SizedBox(
                       width: double.infinity,
                       height: 52,
@@ -198,58 +266,7 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
                             borderRadius: BorderRadius.circular(16),
                           ),
                         ),
-                        onPressed: isLoading
-                            ? null
-                            : () async {
-                          if (selectedDoctorId == null) {
-                            showMessage(AppStrings.pleaseSelectDoctor);
-                            return;
-                          }
-
-                          if (selectedDate == null) {
-                            showMessage(AppStrings.pleaseSelectDate);
-                            return;
-                          }
-
-                          if (selectedTime == null) {
-                            showMessage(AppStrings.pleaseSelectTime);
-                            return;
-                          }
-
-                          setState(() {
-                            isLoading = true;
-                          });
-
-                          try {
-                            await ApiService.bookAppointment(
-                              patientId: UserSession.userId ?? 1,
-                              doctorId: selectedDoctorId!,
-                              appointmentDate:
-                              getFinalAppointmentDate(),
-                            );
-
-                            if (context.mounted) {
-                              Navigator.pop(context);
-
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content:
-                                  Text(AppStrings.appointmentBooked),
-                                ),
-                              );
-                            }
-                          } catch (e) {
-                            if (context.mounted) {
-                              showMessage(AppStrings.appointmentFailed);
-                            }
-                          }
-
-                          if (mounted) {
-                            setState(() {
-                              isLoading = false;
-                            });
-                          }
-                        },
+                        onPressed: isLoading ? null : submitAppointment,
                         child: isLoading
                             ? const CircularProgressIndicator(
                           color: Colors.white,

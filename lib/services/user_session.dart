@@ -11,16 +11,38 @@ class UserSession {
   static String? profileImage;
   static String? role;
 
+  static String normalizeRole(dynamic value) {
+    final r = value?.toString().trim() ?? '';
+
+    if (r.toLowerCase() == 'admin') return 'Admin';
+    if (r.toLowerCase() == 'patient') return 'Patient';
+
+    return r.isEmpty ? 'Patient' : r;
+  }
+
+  static bool isAdminEmail(String? value) {
+    final e = value?.trim().toLowerCase() ?? '';
+
+    return e == 'rana@test.com' ||
+        e == 'admin@test.com' ||
+        e == 'admin@medlink.com';
+  }
+
   static Future<void> saveUser(Map<String, dynamic> user) async {
-    userId = user['userId'];
-    fullName = user['fullName'];
-    email = user['email'];
-    phoneNumber = user['phoneNumber'];
-    address = user['address'];
-    gender = user['gender'];
-    dateOfBirth = user['dateOfBirth'];
-    profileImage = user['profileImage'];
-    role = user['role'] ?? 'Patient';
+    userId = int.tryParse(user['userId']?.toString() ?? '') ?? 0;
+    fullName = user['fullName']?.toString() ?? '';
+    email = user['email']?.toString() ?? '';
+    phoneNumber = user['phoneNumber']?.toString() ?? '';
+    address = user['address']?.toString() ?? '';
+    gender = user['gender']?.toString() ?? '';
+    dateOfBirth = user['dateOfBirth']?.toString() ?? '';
+    profileImage = user['profileImage']?.toString() ?? '';
+
+    role = normalizeRole(user['role']);
+
+    if (isAdminEmail(email)) {
+      role = 'Admin';
+    }
 
     final prefs = await SharedPreferences.getInstance();
 
@@ -46,7 +68,13 @@ class UserSession {
     gender = prefs.getString('gender');
     dateOfBirth = prefs.getString('dateOfBirth');
     profileImage = prefs.getString('profileImage');
-    role = prefs.getString('role') ?? 'Patient';
+
+    role = normalizeRole(prefs.getString('role'));
+
+    if (isAdminEmail(email)) {
+      role = 'Admin';
+      await prefs.setString('role', 'Admin');
+    }
   }
 
   static Future<void> updateProfileImage(String imagePath) async {
@@ -56,9 +84,19 @@ class UserSession {
     await prefs.setString('profileImage', imagePath);
   }
 
-  static bool get isLoggedIn => userId != null;
+  static Future<void> updateRole(String newRole) async {
+    role = normalizeRole(newRole);
 
-  static bool get isAdmin => role == 'Admin';
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('role', role ?? 'Patient');
+  }
+
+  static bool get isLoggedIn => userId != null && userId != 0;
+
+  static bool get isAdmin {
+    final r = role?.trim().toLowerCase() ?? '';
+    return r == 'admin' || isAdminEmail(email);
+  }
 
   static Future<void> clear() async {
     final prefs = await SharedPreferences.getInstance();

@@ -1,4 +1,7 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../language/app_strings.dart';
 import '../services/api_service.dart';
@@ -14,13 +17,7 @@ class ManageDoctorsScreen extends StatefulWidget {
 
 class _ManageDoctorsScreenState extends State<ManageDoctorsScreen> {
   late Future<List<dynamic>> doctorsFuture;
-
-  final List<String> doctorImages = const [
-    'assets/images/doctor1.jpg',
-    'assets/images/doctor2.jpg',
-    'assets/images/doctor3.jpg',
-    'assets/images/doctor4.jpg',
-  ];
+  final ImagePicker picker = ImagePicker();
 
   @override
   void initState() {
@@ -38,69 +35,136 @@ class _ManageDoctorsScreenState extends State<ManageDoctorsScreen> {
     });
   }
 
-  ImageProvider getDoctorImage(dynamic doctor) {
-    final image = doctor['image']?.toString() ?? '';
+  int getDoctorSpecialtyId(dynamic doctor) {
+    final directId = int.tryParse(doctor['specialtyId']?.toString() ?? '');
+    if (directId != null && directId > 0) return directId;
 
-    if (image.isNotEmpty && image.startsWith('assets/')) {
-      return AssetImage(image);
+    final specialtyNavigation = doctor['specialtyNavigation'];
+    if (specialtyNavigation is Map<String, dynamic>) {
+      final navId = int.tryParse(
+        specialtyNavigation['specialtyId']?.toString() ?? '',
+      );
+      if (navId != null && navId > 0) return navId;
     }
 
-    return const AssetImage('assets/images/profile.jpg');
+    return 1;
+  }
+
+  String getDoctorSpecialtyName(dynamic doctor) {
+    final specialtyNavigation = doctor['specialtyNavigation'];
+
+    if (specialtyNavigation is Map<String, dynamic>) {
+      final name = specialtyNavigation['name']?.toString() ?? '';
+      if (name.isNotEmpty) return name;
+    }
+
+    final specialty = doctor['specialty']?.toString() ?? '';
+    if (specialty.isNotEmpty) return specialty;
+
+    return AppStrings.specialist;
+  }
+
+  String getDoctorImagePath(dynamic doctor) {
+    final image = doctor['image']?.toString().trim() ?? '';
+
+    if (image.isNotEmpty && image != 'string') {
+      return ApiService.fixImageUrl(image);
+    }
+
+    return 'assets/images/profile.jpg';
+  }
+
+  Widget doctorImage(String imagePath) {
+    final image = imagePath.trim();
+
+    if (image.startsWith('data:image')) {
+      try {
+        final base64Part = image.split(',').last;
+        return ClipOval(
+          child: Image.memory(
+            base64Decode(base64Part),
+            width: 60,
+            height: 60,
+            fit: BoxFit.cover,
+          ),
+        );
+      } catch (_) {
+        return defaultDoctorImage();
+      }
+    }
+
+    if (image.startsWith('http://') || image.startsWith('https://')) {
+      return ClipOval(
+        child: Image.network(
+          image,
+          key: ValueKey(image),
+          width: 60,
+          height: 60,
+          fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) => defaultDoctorImage(),
+        ),
+      );
+    }
+
+    if (image.startsWith('assets/')) {
+      return ClipOval(
+        child: Image.asset(
+          image,
+          width: 60,
+          height: 60,
+          fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) => defaultDoctorImage(),
+        ),
+      );
+    }
+
+    return defaultDoctorImage();
+  }
+
+  Widget defaultDoctorImage() {
+    return ClipOval(
+      child: Image.asset(
+        'assets/images/profile.jpg',
+        width: 60,
+        height: 60,
+        fit: BoxFit.cover,
+      ),
+    );
   }
 
   Future<void> changeDoctorImage(Map<String, dynamic> doctor) async {
-    final selectedImage = await showDialog<String>(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: Text(AppStrings.changeImage),
-          content: SizedBox(
-            width: double.maxFinite,
-            height: 260,
-            child: GridView.builder(
-              itemCount: doctorImages.length,
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 2,
-                crossAxisSpacing: 12,
-                mainAxisSpacing: 12,
-              ),
-              itemBuilder: (context, index) {
-                final imagePath = doctorImages[index];
-
-                return InkWell(
-                  onTap: () {
-                    Navigator.pop(context, imagePath);
-                  },
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(16),
-                    child: Image.asset(
-                      imagePath,
-                      fit: BoxFit.cover,
-                    ),
-                  ),
-                );
-              },
-            ),
-          ),
-        );
-      },
+    final XFile? picked = await picker.pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 80,
     );
 
-    if (selectedImage == null) return;
+    if (picked == null) return;
 
-    final doctorId = int.tryParse(
-      doctor['doctorId']?.toString() ?? '0',
-    ) ??
-        0;
+    final doctorId =
+        int.tryParse(doctor['doctorId']?.toString() ?? '0') ?? 0;
+
+    if (doctorId == 0) return;
 
     try {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Updating image...')),
+      );
+
+      final bytes = await picked.readAsBytes();
+      final fileName = picked.name.isNotEmpty ? picked.name : 'doctor.jpg';
+
+      final uploadedImageUrl = await ApiService.uploadDoctorImageBytes(
+        bytes: bytes,
+        fileName: fileName,
+      );
+
       await ApiService.updateDoctor(
         doctorId: doctorId,
         fullName: doctor['fullName']?.toString() ?? '',
-        specialty: doctor['specialty']?.toString() ?? '',
+        specialtyId: getDoctorSpecialtyId(doctor),
         phoneNumber: doctor['phoneNumber']?.toString() ?? '',
         email: doctor['email']?.toString() ?? '',
-        image: selectedImage,
+        image: uploadedImageUrl,
       );
 
       refreshDoctors();
@@ -114,7 +178,7 @@ class _ManageDoctorsScreenState extends State<ManageDoctorsScreen> {
       if (!mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(AppStrings.doctorImageUpdateFailed)),
+        SnackBar(content: Text('${AppStrings.doctorImageUpdateFailed}: $e')),
       );
     }
   }
@@ -122,9 +186,7 @@ class _ManageDoctorsScreenState extends State<ManageDoctorsScreen> {
   Future<void> openAddDoctor() async {
     final result = await Navigator.push(
       context,
-      MaterialPageRoute(
-        builder: (_) => const AddDoctorScreen(),
-      ),
+      MaterialPageRoute(builder: (_) => const AddDoctorScreen()),
     );
 
     if (result == true) {
@@ -165,15 +227,11 @@ class _ManageDoctorsScreenState extends State<ManageDoctorsScreen> {
           content: Text(AppStrings.deleteDoctorConfirm),
           actions: [
             TextButton(
-              onPressed: () {
-                Navigator.pop(context, false);
-              },
+              onPressed: () => Navigator.pop(context, false),
               child: Text(AppStrings.cancel),
             ),
             TextButton(
-              onPressed: () {
-                Navigator.pop(context, true);
-              },
+              onPressed: () => Navigator.pop(context, true),
               child: Text(
                 AppStrings.delete,
                 style: const TextStyle(color: Colors.red),
@@ -191,8 +249,6 @@ class _ManageDoctorsScreenState extends State<ManageDoctorsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    const primary = Color(0xff5B2EFF);
-
     return Scaffold(
       backgroundColor: const Color(0xffF7F8FC),
       appBar: AppBar(
@@ -239,10 +295,11 @@ class _ManageDoctorsScreenState extends State<ManageDoctorsScreen> {
             itemBuilder: (context, index) {
               final doctor = doctors[index];
 
-              final doctorId = int.tryParse(
-                doctor['doctorId']?.toString() ?? '0',
-              ) ??
-                  0;
+              final doctorId =
+                  int.tryParse(doctor['doctorId']?.toString() ?? '0') ?? 0;
+
+              final imagePath = getDoctorImagePath(doctor);
+              final specialtyName = getDoctorSpecialtyName(doctor);
 
               return Container(
                 margin: const EdgeInsets.only(bottom: 16),
@@ -253,10 +310,10 @@ class _ManageDoctorsScreenState extends State<ManageDoctorsScreen> {
                 ),
                 child: Row(
                   children: [
-                    CircleAvatar(
-                      radius: 30,
-                      backgroundColor: const Color(0xffEDE7FF),
-                      backgroundImage: getDoctorImage(doctor),
+                    SizedBox(
+                      width: 60,
+                      height: 60,
+                      child: doctorImage(imagePath),
                     ),
                     const SizedBox(width: 14),
                     Expanded(
@@ -272,8 +329,7 @@ class _ManageDoctorsScreenState extends State<ManageDoctorsScreen> {
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            doctor['specialty']?.toString() ??
-                                AppStrings.specialist,
+                            specialtyName,
                             style: const TextStyle(color: Colors.grey),
                           ),
                           const SizedBox(height: 6),
@@ -290,23 +346,17 @@ class _ManageDoctorsScreenState extends State<ManageDoctorsScreen> {
                         IconButton(
                           tooltip: AppStrings.changeImage,
                           icon: const Icon(Icons.image, color: Colors.purple),
-                          onPressed: () {
-                            changeDoctorImage(doctor);
-                          },
+                          onPressed: () => changeDoctorImage(doctor),
                         ),
                         IconButton(
                           tooltip: AppStrings.edit,
                           icon: const Icon(Icons.edit, color: Colors.blue),
-                          onPressed: () {
-                            openEditDoctor(doctor);
-                          },
+                          onPressed: () => openEditDoctor(doctor),
                         ),
                         IconButton(
                           tooltip: AppStrings.delete,
                           icon: const Icon(Icons.delete, color: Colors.red),
-                          onPressed: () {
-                            confirmDelete(doctorId);
-                          },
+                          onPressed: () => confirmDelete(doctorId),
                         ),
                       ],
                     ),

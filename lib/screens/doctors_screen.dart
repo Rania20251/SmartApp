@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import '../language/app_strings.dart';
 import '../services/api_service.dart';
@@ -14,6 +16,16 @@ class _DoctorsScreenState extends State<DoctorsScreen> {
   final searchController = TextEditingController();
   String searchText = '';
 
+  late Future<List<dynamic>> doctorsFuture;
+  late Future<List<dynamic>> specialtiesFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    doctorsFuture = ApiService.getDoctors();
+    specialtiesFuture = ApiService.getSpecialties();
+  }
+
   @override
   void dispose() {
     searchController.dispose();
@@ -21,239 +33,502 @@ class _DoctorsScreenState extends State<DoctorsScreen> {
   }
 
   String getDoctorImage(dynamic doctor) {
-    final name = (doctor['fullName'] ?? '').toString().toLowerCase();
+    final image = doctor['image']?.toString().trim() ?? '';
 
-    if (name.contains('ahmed') || name.contains('أحمد')) {
-      return 'assets/images/doctor1.jpg';
+    if (image.isNotEmpty && image != 'string') {
+      return image;
     }
 
-    if (name.contains('sara') ||
-        name.contains('sarah') ||
-        name.contains('سارة') ||
-        name.contains('ساره')) {
-      return 'assets/images/doctor2.jpg';
-    }
-
-    if (name.contains('omar') || name.contains('عمر')) {
-      return 'assets/images/doctor3.jpg';
-    }
-
-    return 'assets/images/doctor4.jpg';
+    return 'assets/images/profile.jpg';
   }
 
-  String doctorName(String name) {
-    final value = name.toLowerCase();
+  int getDoctorSpecialtyId(dynamic doctor) {
+    final directId = int.tryParse(doctor['specialtyId']?.toString() ?? '');
+    if (directId != null) return directId;
 
-    if (AppStrings.isArabic) {
-      if (value.contains('ahmed') || value.contains('أحمد')) {
-        return 'د. أحمد الخطيب';
-      }
-      if (value.contains('sara') ||
-          value.contains('sarah') ||
-          value.contains('سارة') ||
-          value.contains('ساره')) {
-        return 'د. سارة العلي';
-      }
-      if (value.contains('omar') || value.contains('عمر')) {
-        return 'د. عمر الشامي';
-      }
-      if (value.contains('nour') ||
-          value.contains('noor') ||
-          value.contains('نور')) {
-        return 'د. نور الهاشمي';
-      }
-    } else {
-      if (value.contains('ahmed') || value.contains('أحمد')) {
-        return 'Dr. Ahmed Al-Khatib';
-      }
-      if (value.contains('sara') ||
-          value.contains('sarah') ||
-          value.contains('سارة') ||
-          value.contains('ساره')) {
-        return 'Dr. Sara Al-Ali';
-      }
-      if (value.contains('omar') || value.contains('عمر')) {
-        return 'Dr. Omar Al-Shami';
-      }
-      if (value.contains('nour') ||
-          value.contains('noor') ||
-          value.contains('نور')) {
-        return 'Dr. Nour Al-Hashemi';
-      }
+    final nav = doctor['specialtyNavigation'];
+    if (nav is Map<String, dynamic>) {
+      return int.tryParse(nav['specialtyId']?.toString() ?? '') ?? 0;
     }
+
+    return 0;
+  }
+
+  String normalizeText(String text) {
+    return text
+        .toLowerCase()
+        .replaceAll('أ', 'ا')
+        .replaceAll('إ', 'ا')
+        .replaceAll('آ', 'ا')
+        .replaceAll('ٱ', 'ا')
+        .replaceAll('ة', 'ه')
+        .replaceAll('ى', 'ي')
+        .replaceAll('ؤ', 'و')
+        .replaceAll('ئ', 'ي')
+        .replaceAll('ـ', '')
+        .replaceAll('َ', '')
+        .replaceAll('ً', '')
+        .replaceAll('ُ', '')
+        .replaceAll('ٌ', '')
+        .replaceAll('ِ', '')
+        .replaceAll('ٍ', '')
+        .replaceAll('ْ', '')
+        .replaceAll('ّ', '')
+        .replaceAll('.', '')
+        .replaceAll('-', '')
+        .replaceAll('_', '')
+        .replaceAll(' ', '')
+        .trim();
+  }
+
+  String translateSpecialty(String name) {
+    final value = name.toLowerCase().trim();
+
+    if (!AppStrings.isArabic) return name;
+
+    if (value.contains('cardiology') || value.contains('heart') || value.contains('قلب')) return 'القلب';
+    if (value.contains('dentistry') || value.contains('dental') || value.contains('dentist') || value.contains('أسنان') || value.contains('اسنان')) return 'الأسنان';
+    if (value.contains('neurology') || value.contains('neuro') || value.contains('أعصاب') || value.contains('اعصاب')) return 'الأعصاب';
+    if (value.contains('pediatrics') || value.contains('pedia') || value.contains('child') || value.contains('أطفال') || value.contains('اطفال')) return 'الأطفال';
+    if (value.contains('dermatology') || value.contains('derma') || value.contains('skin') || value.contains('جلدية')) return 'الجلدية';
+    if (value.contains('ophthalmology') || value.contains('eye') || value.contains('eyes') || value.contains('عيون')) return 'العيون';
+    if (value.contains('surgery') || value.contains('surgeon') || value.contains('جراحة')) return 'الجراحة';
 
     return name;
   }
 
-  String doctorSpecialty(String specialty) {
-    final value = specialty.toLowerCase();
+  String translateDoctorName(String name) {
+    if (!AppStrings.isArabic) return name;
 
-    if (AppStrings.isArabic) {
-      if (value.contains('card') || value.contains('قلب')) return 'أمراض القلب';
-      if (value.contains('neuro') || value.contains('أعصاب')) return 'الأعصاب';
-      if (value.contains('pedia') || value.contains('أطفال')) return 'طب الأطفال';
-      if (value.contains('derma') || value.contains('جلدية')) return 'الجلدية';
-      if (value.contains('eye') || value.contains('oph') || value.contains('عيون')) {
-        return 'العيون';
+    final value = name.toLowerCase().trim();
+
+    if (value.contains('ahmad ali') || value.contains('ahmed ali')) {
+      return 'د. أحمد علي';
+    }
+
+    if (value.contains('sarah ahmad') || value.contains('sara ahmad')) {
+      return 'د. سارة أحمد';
+    }
+
+    return name
+        .replaceAll('Dr.', 'د.')
+        .replaceAll('dr.', 'د.')
+        .replaceAll('Ahmad', 'أحمد')
+        .replaceAll('Ahmed', 'أحمد')
+        .replaceAll('Ali', 'علي')
+        .replaceAll('Sara', 'سارة')
+        .replaceAll('Sarah', 'سارة')
+        .replaceAll('Mohammad', 'محمد')
+        .replaceAll('Mohammed', 'محمد')
+        .replaceAll('Omar', 'عمر')
+        .replaceAll('Nour', 'نور');
+  }
+
+  String englishDoctorName(String name) {
+    return name
+        .replaceAll('د.', 'Dr.')
+        .replaceAll('د ', 'Dr. ')
+        .replaceAll('أحمد', 'Ahmad')
+        .replaceAll('احمد', 'Ahmad')
+        .replaceAll('علي', 'Ali')
+        .replaceAll('سارة', 'Sarah')
+        .replaceAll('ساره', 'Sarah')
+        .replaceAll('محمد', 'Mohammad')
+        .replaceAll('عمر', 'Omar')
+        .replaceAll('نور', 'Nour');
+  }
+
+  String arabicDoctorName(String name) {
+    return name
+        .replaceAll('Dr.', 'د.')
+        .replaceAll('dr.', 'د.')
+        .replaceAll('Dr', 'د.')
+        .replaceAll('dr', 'د.')
+        .replaceAll('Ahmad', 'أحمد')
+        .replaceAll('Ahmed', 'أحمد')
+        .replaceAll('Ali', 'علي')
+        .replaceAll('Sarah', 'سارة')
+        .replaceAll('Sara', 'سارة')
+        .replaceAll('Mohammad', 'محمد')
+        .replaceAll('Mohammed', 'محمد')
+        .replaceAll('Omar', 'عمر')
+        .replaceAll('Nour', 'نور');
+  }
+
+  String removeDoctorTitle(String name) {
+    return name
+        .replaceAll('Dr.', '')
+        .replaceAll('dr.', '')
+        .replaceAll('Dr', '')
+        .replaceAll('dr', '')
+        .replaceAll('د.', '')
+        .replaceAll('د ', '')
+        .trim();
+  }
+
+  List<String> splitNameWords(String name) {
+    return removeDoctorTitle(name)
+        .split(RegExp(r'\s+'))
+        .where((word) => word.trim().isNotEmpty)
+        .toList();
+  }
+
+  List<String> doctorNameSearchValues(String name) {
+    final shownName = translateDoctorName(name);
+    final englishName = englishDoctorName(name);
+    final arabicName = arabicDoctorName(name);
+
+    return [
+      name,
+      shownName,
+      englishName,
+      arabicName,
+      removeDoctorTitle(name),
+      removeDoctorTitle(shownName),
+      removeDoctorTitle(englishName),
+      removeDoctorTitle(arabicName),
+    ];
+  }
+
+  bool matchesDoctorName(String name, String search) {
+    final normalizedSearch = normalizeText(search);
+    if (normalizedSearch.isEmpty) return true;
+
+    final searchParts = search
+        .trim()
+        .split(RegExp(r'\s+'))
+        .where((part) => part.trim().isNotEmpty)
+        .toList();
+
+    final names = doctorNameSearchValues(name);
+
+    if (searchParts.length == 1) {
+      for (final value in names) {
+        final words = splitNameWords(value);
+
+        if (words.isEmpty) continue;
+
+        final firstName = normalizeText(words.first);
+
+        if (firstName.startsWith(normalizedSearch) ||
+            firstName.contains(normalizedSearch)) {
+          return true;
+        }
       }
-    } else {
-      if (value.contains('card') || value.contains('قلب')) return 'Cardiology';
-      if (value.contains('neuro') || value.contains('أعصاب') || value.contains('اعصاب')) {
-        return 'Neurology';
-      }
-      if (value.contains('pedia') || value.contains('أطفال') || value.contains('اطفال')) {
-        return 'Pediatrics';
-      }
-      if (value.contains('derma') || value.contains('جلدية')) return 'Dermatology';
-      if (value.contains('eye') || value.contains('oph') || value.contains('عيون')) {
-        return 'Ophthalmology';
+
+      return false;
+    }
+
+    for (final value in names) {
+      final normalizedValue = normalizeText(value);
+
+      if (normalizedValue.contains(normalizedSearch)) {
+        return true;
       }
     }
 
-    return specialty;
+    return false;
   }
 
-  bool matchesSearch(dynamic doctor) {
-    final originalName = doctor['fullName']?.toString() ?? '';
-    final originalSpecialty = doctor['specialty']?.toString() ?? '';
+  List<String> specialtySearchValues(String specialty) {
+    final value = specialty.toLowerCase().trim();
 
-    final shownName = doctorName(originalName);
-    final shownSpecialty = doctorSpecialty(originalSpecialty);
+    final values = <String>[
+      specialty,
+      translateSpecialty(specialty),
+    ];
 
-    final search = searchText.toLowerCase();
+    if (value.contains('cardiology') ||
+        value.contains('heart') ||
+        value.contains('قلب')) {
+      values.addAll([
+        'Cardiology',
+        'Heart',
+        'Cardio',
+        'القلب',
+        'قلب',
+        'طبيب قلب',
+      ]);
+    }
 
+    if (value.contains('dentistry') ||
+        value.contains('dental') ||
+        value.contains('dentist') ||
+        value.contains('أسنان') ||
+        value.contains('اسنان')) {
+      values.addAll([
+        'Dentistry',
+        'Dental',
+        'Dentist',
+        'Teeth',
+        'الأسنان',
+        'الاسنان',
+        'أسنان',
+        'اسنان',
+        'طبيب أسنان',
+        'طبيب اسنان',
+      ]);
+    }
+
+    if (value.contains('neurology') ||
+        value.contains('neuro') ||
+        value.contains('أعصاب') ||
+        value.contains('اعصاب')) {
+      values.addAll([
+        'Neurology',
+        'Neuro',
+        'Nerves',
+        'Brain',
+        'الأعصاب',
+        'الاعصاب',
+        'أعصاب',
+        'اعصاب',
+        'طبيب أعصاب',
+      ]);
+    }
+
+    if (value.contains('pediatrics') ||
+        value.contains('pedia') ||
+        value.contains('child') ||
+        value.contains('أطفال') ||
+        value.contains('اطفال')) {
+      values.addAll([
+        'Pediatrics',
+        'Pedia',
+        'Children',
+        'Child',
+        'الأطفال',
+        'الاطفال',
+        'أطفال',
+        'اطفال',
+        'طبيب أطفال',
+      ]);
+    }
+
+    if (value.contains('dermatology') ||
+        value.contains('derma') ||
+        value.contains('skin') ||
+        value.contains('جلدية')) {
+      values.addAll([
+        'Dermatology',
+        'Derma',
+        'Skin',
+        'الجلدية',
+        'جلدية',
+        'طبيب جلدية',
+      ]);
+    }
+
+    if (value.contains('ophthalmology') ||
+        value.contains('eye') ||
+        value.contains('eyes') ||
+        value.contains('عيون')) {
+      values.addAll([
+        'Ophthalmology',
+        'Eye',
+        'Eyes',
+        'العيون',
+        'عيون',
+        'طبيب عيون',
+      ]);
+    }
+
+    if (value.contains('surgery') ||
+        value.contains('surgeon') ||
+        value.contains('جراحة')) {
+      values.addAll([
+        'Surgery',
+        'Surgeon',
+        'الجراحة',
+        'جراحة',
+        'طبيب جراحة',
+      ]);
+    }
+
+    return values;
+  }
+
+  bool containsSearch(List<String> values, String search) {
+    final normalizedSearch = normalizeText(search);
+    if (normalizedSearch.isEmpty) return true;
+
+    for (final value in values) {
+      final normalizedValue = normalizeText(value);
+      if (normalizedValue.isEmpty) continue;
+
+      if (normalizedValue.contains(normalizedSearch)) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  bool matchesSearch({
+    required String name,
+    required String specialty,
+  }) {
+    final search = searchText.trim();
     if (search.isEmpty) return true;
 
-    return originalName.toLowerCase().contains(search) ||
-        originalSpecialty.toLowerCase().contains(search) ||
-        shownName.toLowerCase().contains(search) ||
-        shownSpecialty.toLowerCase().contains(search);
+    final doctorMatches = matchesDoctorName(name, search);
+    final specialtyMatches = containsSearch(
+      specialtySearchValues(specialty),
+      search,
+    );
+
+    return doctorMatches || specialtyMatches;
   }
 
   @override
   Widget build(BuildContext context) {
     const primary = Color(0xff5B2EFF);
 
-    return Scaffold(
-      backgroundColor: const Color(0xffF7F8FC),
-      appBar: AppBar(
-        title: Text(AppStrings.doctors),
-        backgroundColor: Colors.white,
-        foregroundColor: Colors.black,
-        elevation: 0,
-      ),
-      body: Center(
-        child: Container(
-          width: 390,
-          padding: const EdgeInsets.all(18),
-          child: Column(
-            children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: searchController,
-                      textDirection:
-                      AppStrings.isArabic ? TextDirection.rtl : TextDirection.ltr,
-                      onChanged: (value) {
-                        setState(() {
-                          searchText = value.trim();
-                        });
-                      },
-                      decoration: InputDecoration(
-                        hintText: AppStrings.searchDoctors,
-                        prefixIcon: const Icon(Icons.search),
-                        suffixIcon: searchText.isNotEmpty
-                            ? IconButton(
-                          icon: const Icon(Icons.clear),
-                          onPressed: () {
-                            searchController.clear();
-                            setState(() {
-                              searchText = '';
-                            });
-                          },
-                        )
-                            : null,
-                        filled: true,
-                        fillColor: Colors.white,
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(18),
-                          borderSide: BorderSide.none,
+    return Directionality(
+      textDirection: AppStrings.isArabic ? TextDirection.rtl : TextDirection.ltr,
+      child: Scaffold(
+        backgroundColor: const Color(0xffF7F8FC),
+        appBar: AppBar(
+          title: Text(AppStrings.doctors),
+          backgroundColor: Colors.white,
+          foregroundColor: Colors.black,
+          elevation: 0,
+        ),
+        body: Center(
+          child: Container(
+            width: 390,
+            padding: const EdgeInsets.all(18),
+            child: Column(
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: searchController,
+                        textDirection: AppStrings.isArabic
+                            ? TextDirection.rtl
+                            : TextDirection.ltr,
+                        onChanged: (value) {
+                          setState(() {
+                            searchText = value.trim();
+                          });
+                        },
+                        decoration: InputDecoration(
+                          hintText: AppStrings.searchDoctors,
+                          prefixIcon: const Icon(Icons.search),
+                          suffixIcon: searchText.isNotEmpty
+                              ? IconButton(
+                            icon: const Icon(Icons.clear),
+                            onPressed: () {
+                              searchController.clear();
+                              setState(() {
+                                searchText = '';
+                              });
+                            },
+                          )
+                              : null,
+                          filled: true,
+                          fillColor: Colors.white,
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(18),
+                            borderSide: BorderSide.none,
+                          ),
                         ),
                       ),
                     ),
-                  ),
-                  const SizedBox(width: 10),
-                  Container(
-                    width: 52,
-                    height: 52,
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(16),
+                    const SizedBox(width: 10),
+                    Container(
+                      width: 52,
+                      height: 52,
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: const Icon(Icons.tune, color: primary),
                     ),
-                    child: const Icon(Icons.tune, color: primary),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 18),
-              Expanded(
-                child: FutureBuilder<List<dynamic>>(
-                  future: ApiService.getDoctors(),
-                  builder: (context, snapshot) {
-                    if (snapshot.connectionState == ConnectionState.waiting) {
-                      return const Center(child: CircularProgressIndicator());
-                    }
+                  ],
+                ),
+                const SizedBox(height: 18),
+                Expanded(
+                  child: FutureBuilder<List<List<dynamic>>>(
+                    future: Future.wait([doctorsFuture, specialtiesFuture]),
+                    builder: (context, snapshot) {
+                      if (snapshot.connectionState == ConnectionState.waiting) {
+                        return const Center(child: CircularProgressIndicator());
+                      }
 
-                    if (snapshot.hasError) {
-                      return Center(
-                        child: Text(
-                          AppStrings.failedLoadDoctors,
-                          style: const TextStyle(color: Colors.red),
-                        ),
-                      );
-                    }
+                      if (snapshot.hasError) {
+                        return Center(
+                          child: Text(
+                            AppStrings.failedLoadDoctors,
+                            style: const TextStyle(color: Colors.red),
+                          ),
+                        );
+                      }
 
-                    final doctors = (snapshot.data ?? [])
-                        .where((doctor) => matchesSearch(doctor))
-                        .toList();
+                      final doctorsData = snapshot.data?[0] ?? [];
+                      final specialties = snapshot.data?[1] ?? [];
 
-                    if (doctors.isEmpty) {
-                      return Center(child: Text(AppStrings.noDoctorsFound));
-                    }
+                      final specialtyNames = <int, String>{};
 
-                    return ListView.builder(
-                      itemCount: doctors.length,
-                      itemBuilder: (context, index) {
-                        final doctor = doctors[index];
-
-                        final doctorId = int.tryParse(
-                          doctor['doctorId']?.toString() ?? '0',
+                      for (final specialty in specialties) {
+                        final id = int.tryParse(
+                          specialty['specialtyId']?.toString() ?? '',
                         ) ??
                             0;
+                        final name = specialty['name']?.toString() ?? '';
+                        specialtyNames[id] = name;
+                      }
 
-                        final originalName =
-                            doctor['fullName']?.toString() ?? AppStrings.doctor;
-
-                        final originalSpecialty =
+                      final doctors = doctorsData.where((doctor) {
+                        final name = doctor['fullName']?.toString() ?? '';
+                        final specialtyId = getDoctorSpecialtyId(doctor);
+                        final specialty = specialtyNames[specialtyId] ??
                             doctor['specialty']?.toString() ??
-                                AppStrings.specialist;
+                            AppStrings.specialist;
 
-                        final name = doctorName(originalName);
-                        final specialty = doctorSpecialty(originalSpecialty);
-                        final imagePath = getDoctorImage(doctor);
+                        return matchesSearch(name: name, specialty: specialty);
+                      }).toList();
 
-                        return DoctorListCard(
-                          doctorId: doctorId,
-                          name: name,
-                          specialty: specialty,
-                          imagePath: imagePath,
-                        );
-                      },
-                    );
-                  },
+                      if (doctors.isEmpty) {
+                        return Center(child: Text(AppStrings.noDoctorsFound));
+                      }
+
+                      return ListView.builder(
+                        itemCount: doctors.length,
+                        itemBuilder: (context, index) {
+                          final doctor = doctors[index];
+
+                          final doctorId = int.tryParse(
+                            doctor['doctorId']?.toString() ?? '0',
+                          ) ??
+                              0;
+
+                          final originalName =
+                              doctor['fullName']?.toString() ?? AppStrings.doctor;
+
+                          final specialtyId = getDoctorSpecialtyId(doctor);
+
+                          final originalSpecialty =
+                              specialtyNames[specialtyId] ??
+                                  doctor['specialty']?.toString() ??
+                                  AppStrings.specialist;
+
+                          final imagePath = getDoctorImage(doctor);
+
+                          return DoctorListCard(
+                            doctorId: doctorId,
+                            name: translateDoctorName(originalName),
+                            specialty: translateSpecialty(originalSpecialty),
+                            imagePath: imagePath,
+                          );
+                        },
+                      );
+                    },
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
@@ -274,6 +549,64 @@ class DoctorListCard extends StatelessWidget {
     required this.specialty,
     required this.imagePath,
   });
+
+  Widget doctorImage() {
+    final image = imagePath.trim();
+
+    if (image.startsWith('data:image')) {
+      try {
+        final base64Part = image.split(',').last;
+
+        return ClipOval(
+          child: Image.memory(
+            base64Decode(base64Part),
+            width: 60,
+            height: 60,
+            fit: BoxFit.cover,
+          ),
+        );
+      } catch (_) {
+        return defaultImage();
+      }
+    }
+
+    if (image.startsWith('http://') || image.startsWith('https://')) {
+      return ClipOval(
+        child: Image.network(
+          image,
+          width: 60,
+          height: 60,
+          fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) => defaultImage(),
+        ),
+      );
+    }
+
+    if (image.startsWith('assets/')) {
+      return ClipOval(
+        child: Image.asset(
+          image,
+          width: 60,
+          height: 60,
+          fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) => defaultImage(),
+        ),
+      );
+    }
+
+    return defaultImage();
+  }
+
+  Widget defaultImage() {
+    return ClipOval(
+      child: Image.asset(
+        'assets/images/profile.jpg',
+        width: 60,
+        height: 60,
+        fit: BoxFit.cover,
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -305,18 +638,22 @@ class DoctorListCard extends StatelessWidget {
         ),
         child: Row(
           children: [
-            CircleAvatar(
-              radius: 30,
-              backgroundColor: const Color(0xffEDE7FF),
-              backgroundImage: AssetImage(imagePath),
+            SizedBox(
+              width: 60,
+              height: 60,
+              child: doctorImage(),
             ),
             const SizedBox(width: 14),
             Expanded(
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+                crossAxisAlignment: AppStrings.isArabic
+                    ? CrossAxisAlignment.end
+                    : CrossAxisAlignment.start,
                 children: [
                   Text(
                     name,
+                    textAlign:
+                    AppStrings.isArabic ? TextAlign.right : TextAlign.left,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
@@ -327,6 +664,8 @@ class DoctorListCard extends StatelessWidget {
                   const SizedBox(height: 4),
                   Text(
                     specialty,
+                    textAlign:
+                    AppStrings.isArabic ? TextAlign.right : TextAlign.left,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(color: Colors.grey),

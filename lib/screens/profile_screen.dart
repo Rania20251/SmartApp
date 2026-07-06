@@ -1,7 +1,6 @@
-import 'dart:io';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
-import 'package:image_picker/image_picker.dart';
 
 import '../language/app_strings.dart';
 import '../services/user_session.dart';
@@ -12,47 +11,43 @@ import 'change_password_screen.dart';
 import 'admin_dashboard_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
-  const ProfileScreen({super.key});
+  final VoidCallback? onLanguageChanged;
+
+  const ProfileScreen({
+    super.key,
+    this.onLanguageChanged,
+  });
 
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
-  final ImagePicker imagePicker = ImagePicker();
-
-  Future<void> pickProfileImage() async {
-    final XFile? image = await imagePicker.pickImage(
-      source: ImageSource.gallery,
-    );
-
-    if (image == null) return;
-
-    setState(() {
-      UserSession.profileImage = image.path;
-    });
-
-    await UserSession.updateProfileImage(image.path);
-  }
-
   ImageProvider getProfileImage() {
-    final imagePath = UserSession.profileImage;
+    final imagePath = UserSession.profileImage ?? '';
 
-    if (imagePath != null && imagePath.isNotEmpty) {
-      if (imagePath.startsWith('assets/')) {
-        return AssetImage(imagePath);
-      }
+    if (imagePath.startsWith('data:image')) {
+      final base64Part = imagePath.split(',').last;
+      return MemoryImage(base64Decode(base64Part));
+    }
 
-      return FileImage(File(imagePath));
+    if (imagePath.startsWith('http://') || imagePath.startsWith('https://')) {
+      return NetworkImage(imagePath);
+    }
+
+    if (imagePath.startsWith('assets/')) {
+      return AssetImage(imagePath);
     }
 
     return const AssetImage('assets/images/profile.jpg');
   }
 
   void changeLanguage(Locale locale) {
-    setState(() {
-      AppStrings.changeLanguage(locale);
-    });
+    AppStrings.changeLanguage(locale);
+
+    setState(() {});
+
+    widget.onLanguageChanged?.call();
 
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(AppStrings.languageChanged)),
@@ -84,19 +79,28 @@ class _ProfileScreenState extends State<ProfileScreen> {
           child: ListView(
             children: [
               const SizedBox(height: 20),
-
               Center(
                 child: Stack(
                   children: [
                     CircleAvatar(
                       radius: 60,
+                      backgroundColor: const Color(0xffEDE7FF),
                       backgroundImage: getProfileImage(),
                     ),
                     Positioned(
                       right: 0,
                       bottom: 0,
                       child: InkWell(
-                        onTap: pickProfileImage,
+                        onTap: () async {
+                          await Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const EditProfileScreen(),
+                            ),
+                          );
+
+                          if (mounted) setState(() {});
+                        },
                         child: Container(
                           padding: const EdgeInsets.all(8),
                           decoration: const BoxDecoration(
@@ -114,9 +118,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ],
                 ),
               ),
-
               const SizedBox(height: 16),
-
               Center(
                 child: Text(
                   fullName,
@@ -126,18 +128,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ),
                 ),
               ),
-
               const SizedBox(height: 6),
-
               Center(
                 child: Text(
                   email,
                   style: const TextStyle(color: Colors.grey),
                 ),
               ),
-
               const SizedBox(height: 6),
-
               Center(
                 child: Text(
                   '${AppStrings.role}: ${UserSession.role ?? 'Patient'}',
@@ -147,9 +145,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ),
                 ),
               ),
-
               const SizedBox(height: 6),
-
               Center(
                 child: Text(
                   '${AppStrings.userId}: ${UserSession.userId}',
@@ -159,9 +155,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ),
                 ),
               ),
-
               const SizedBox(height: 30),
-
               FutureBuilder<int>(
                 future: ApiService.getAppointmentCountByUser(
                   UserSession.userId ?? 0,
@@ -184,41 +178,32 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   );
                 },
               ),
-
               ProfileItem(
                 icon: Icons.medical_services,
                 title: AppStrings.medicalRecords,
                 value: AppStrings.fromDatabase,
               ),
-
               ProfileItem(
                 icon: Icons.phone,
                 title: AppStrings.phoneNumber,
                 value: phone,
               ),
-
               ProfileItem(
                 icon: Icons.location_on,
                 title: AppStrings.address,
                 value: address,
               ),
-
               ProfileItem(
                 icon: Icons.person,
                 title: AppStrings.gender,
                 value: gender,
               ),
-
               ProfileItem(
                 icon: Icons.language,
                 title: AppStrings.language,
-                value: AppStrings.isArabic
-                    ? AppStrings.arabic
-                    : AppStrings.english,
+                value: AppStrings.isArabic ? AppStrings.arabic : AppStrings.english,
               ),
-
               const SizedBox(height: 12),
-
               SizedBox(
                 height: 52,
                 child: ElevatedButton.icon(
@@ -240,9 +225,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   },
                 ),
               ),
-
               const SizedBox(height: 12),
-
               SizedBox(
                 height: 52,
                 child: ElevatedButton.icon(
@@ -263,15 +246,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       ),
                     );
 
-                    if (mounted) {
-                      setState(() {});
-                    }
+                    if (mounted) setState(() {});
                   },
                 ),
               ),
-
               const SizedBox(height: 12),
-
               SizedBox(
                 height: 52,
                 child: ElevatedButton.icon(
@@ -294,7 +273,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   },
                 ),
               ),
-
               if (UserSession.isAdmin) ...[
                 const SizedBox(height: 12),
                 SizedBox(
@@ -320,9 +298,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ),
                 ),
               ],
-
               const SizedBox(height: 12),
-
               SizedBox(
                 height: 52,
                 child: ElevatedButton.icon(
@@ -386,25 +362,16 @@ class ProfileItem extends StatelessWidget {
           CircleAvatar(
             radius: 24,
             backgroundColor: const Color(0xffEDE7FF),
-            child: Icon(
-              icon,
-              color: primary,
-            ),
+            child: Icon(icon, color: primary),
           ),
           const SizedBox(width: 14),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  title,
-                  style: const TextStyle(fontWeight: FontWeight.bold),
-                ),
+                Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
                 const SizedBox(height: 4),
-                Text(
-                  value,
-                  style: const TextStyle(color: Colors.grey),
-                ),
+                Text(value, style: const TextStyle(color: Colors.grey)),
               ],
             ),
           ),

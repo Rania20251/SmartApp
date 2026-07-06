@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -33,8 +35,15 @@ class _RecordsScreenState extends State<RecordsScreen> {
     });
   }
 
+  void showMessage(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
+  }
+
   String getFileName(String path) {
     if (path.isEmpty) return '';
+    if (path.startsWith('data:')) return 'uploaded_file';
     return path.split('/').last.split('\\').last;
   }
 
@@ -42,7 +51,6 @@ class _RecordsScreenState extends State<RecordsScreen> {
     final name = fileName.toLowerCase();
 
     if (name.endsWith('.pdf')) return Icons.picture_as_pdf;
-
     if (name.endsWith('.jpg') ||
         name.endsWith('.jpeg') ||
         name.endsWith('.png')) {
@@ -52,11 +60,19 @@ class _RecordsScreenState extends State<RecordsScreen> {
     return Icons.insert_drive_file;
   }
 
+  String mimeType(String fileName) {
+    final name = fileName.toLowerCase();
+
+    if (name.endsWith('.pdf')) return 'application/pdf';
+    if (name.endsWith('.jpg') || name.endsWith('.jpeg')) return 'image/jpeg';
+    if (name.endsWith('.png')) return 'image/png';
+
+    return 'application/octet-stream';
+  }
+
   Future<void> openFileUrl(String fileUrl) async {
     if (fileUrl.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(AppStrings.noFileFound)),
-      );
+      showMessage(AppStrings.noFileFound);
       return;
     }
 
@@ -68,9 +84,7 @@ class _RecordsScreenState extends State<RecordsScreen> {
     );
 
     if (!opened && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(AppStrings.couldNotOpenFile)),
-      );
+      showMessage(AppStrings.couldNotOpenFile);
     }
   }
 
@@ -80,20 +94,17 @@ class _RecordsScreenState extends State<RecordsScreen> {
     final result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
       allowedExtensions: ['pdf', 'jpg', 'jpeg', 'png'],
+      withData: true,
     );
 
     if (result == null) return;
 
     final file = result.files.single;
     final fileName = file.name;
-    final filePath = file.path;
+    final bytes = file.bytes;
 
-    if (filePath == null || filePath.isEmpty) {
-      if (!mounted) return;
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(AppStrings.filePathNotFound)),
-      );
+    if (bytes == null) {
+      showMessage(AppStrings.filePathNotFound);
       return;
     }
 
@@ -102,28 +113,28 @@ class _RecordsScreenState extends State<RecordsScreen> {
     });
 
     try {
-      await ApiService.uploadMedicalRecord(
+      final base64File = base64Encode(bytes);
+      final fileUrl = 'data:${mimeType(fileName)};base64,$base64File';
+
+      await ApiService.createMedicalRecord(
         patientId: UserSession.userId ?? 0,
         doctorId: 1,
         title: fileName,
         description: AppStrings.uploadedMedicalReport,
+        recordDate: DateTime.now().toIso8601String(),
         status: AppStrings.uploaded,
-        filePath: filePath,
+        fileUrl: fileUrl,
       );
 
       refreshRecords();
 
       if (!mounted) return;
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(AppStrings.reportUploaded)),
-      );
+      showMessage(AppStrings.reportUploaded);
     } catch (e) {
       if (!mounted) return;
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('${AppStrings.uploadFailed}: $e')),
-      );
+      showMessage('${AppStrings.uploadFailed}: $e');
     }
 
     if (mounted) {
@@ -140,15 +151,11 @@ class _RecordsScreenState extends State<RecordsScreen> {
 
       if (!mounted) return;
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(AppStrings.recordDeleted)),
-      );
+      showMessage(AppStrings.recordDeleted);
     } catch (e) {
       if (!mounted) return;
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(AppStrings.deleteRecordFailed)),
-      );
+      showMessage(AppStrings.deleteRecordFailed);
     }
   }
 
@@ -257,7 +264,8 @@ class _RecordsScreenState extends State<RecordsScreen> {
     final recordId = int.tryParse(record['recordId']?.toString() ?? '0') ?? 0;
 
     final fileUrl = record['fileUrl']?.toString() ?? '';
-    final fileName = getFileName(fileUrl);
+    final title = record['title']?.toString() ?? AppStrings.medicalRecord;
+    final fileName = fileUrl.startsWith('data:') ? title : getFileName(fileUrl);
 
     return Container(
       margin: const EdgeInsets.fromLTRB(18, 0, 18, 16),
@@ -280,7 +288,7 @@ class _RecordsScreenState extends State<RecordsScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  record['title']?.toString() ?? AppStrings.medicalRecord,
+                  title,
                   style: const TextStyle(
                     fontSize: 17,
                     fontWeight: FontWeight.bold,

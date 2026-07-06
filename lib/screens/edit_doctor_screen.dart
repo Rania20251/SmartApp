@@ -1,4 +1,8 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
+
 import '../language/app_strings.dart';
 import '../services/api_service.dart';
 
@@ -16,20 +20,80 @@ class EditDoctorScreen extends StatefulWidget {
 
 class _EditDoctorScreenState extends State<EditDoctorScreen> {
   final nameController = TextEditingController();
-  final specialtyController = TextEditingController();
   final phoneController = TextEditingController();
   final emailController = TextEditingController();
 
+  final ImagePicker picker = ImagePicker();
+
+  List<dynamic> specialties = [];
+  int? selectedSpecialtyId;
+
   bool isLoading = false;
+  bool isLoadingSpecialties = true;
+
+  String imageUrl = '';
+  File? selectedImageFile;
 
   @override
   void initState() {
     super.initState();
 
     nameController.text = widget.doctor['fullName']?.toString() ?? '';
-    specialtyController.text = widget.doctor['specialty']?.toString() ?? '';
     phoneController.text = widget.doctor['phoneNumber']?.toString() ?? '';
     emailController.text = widget.doctor['email']?.toString() ?? '';
+    imageUrl = widget.doctor['image']?.toString() ?? '';
+
+    selectedSpecialtyId = int.tryParse(
+      widget.doctor['specialtyId']?.toString() ?? '',
+    );
+
+    loadSpecialties();
+  }
+
+  Future<void> loadSpecialties() async {
+    try {
+      final data = await ApiService.getSpecialties();
+
+      if (!mounted) return;
+
+      if (selectedSpecialtyId == null) {
+        final specialtyNavigation = widget.doctor['specialtyNavigation'];
+
+        if (specialtyNavigation is Map<String, dynamic>) {
+          selectedSpecialtyId = int.tryParse(
+            specialtyNavigation['specialtyId']?.toString() ?? '',
+          );
+        }
+      }
+
+      setState(() {
+        specialties = data;
+        isLoadingSpecialties = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => isLoadingSpecialties = false);
+      showMessage(AppStrings.enterSpecialty);
+    }
+  }
+
+  bool get hasNetworkImage =>
+      imageUrl.startsWith('http://') || imageUrl.startsWith('https://');
+
+  ImageProvider? get previewImage {
+    if (selectedImageFile != null) {
+      return FileImage(selectedImageFile!);
+    }
+
+    if (hasNetworkImage) {
+      return NetworkImage(imageUrl);
+    }
+
+    if (imageUrl.isNotEmpty) {
+      return AssetImage(imageUrl);
+    }
+
+    return null;
   }
 
   void showMessage(String message) {
@@ -38,11 +102,39 @@ class _EditDoctorScreenState extends State<EditDoctorScreen> {
     );
   }
 
+  Future<void> pickAndUploadImage() async {
+    final XFile? picked = await picker.pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 80,
+    );
+
+    if (picked == null) return;
+
+    setState(() {
+      selectedImageFile = File(picked.path);
+      isLoading = true;
+    });
+
+    try {
+      final uploadedUrl = await ApiService.uploadDoctorImage(picked.path);
+
+      setState(() {
+        imageUrl = uploadedUrl;
+      });
+
+      showMessage('Image uploaded successfully');
+    } catch (e) {
+      showMessage('Failed to upload image');
+    }
+
+    if (mounted) {
+      setState(() => isLoading = false);
+    }
+  }
+
   Future<void> updateDoctor() async {
-    final doctorId = int.tryParse(
-      widget.doctor['doctorId']?.toString() ?? '0',
-    ) ??
-        0;
+    final doctorId =
+        int.tryParse(widget.doctor['doctorId']?.toString() ?? '0') ?? 0;
 
     if (doctorId == 0) {
       showMessage(AppStrings.invalidDoctorId);
@@ -54,7 +146,7 @@ class _EditDoctorScreenState extends State<EditDoctorScreen> {
       return;
     }
 
-    if (specialtyController.text.trim().isEmpty) {
+    if (selectedSpecialtyId == null) {
       showMessage(AppStrings.enterSpecialty);
       return;
     }
@@ -65,10 +157,10 @@ class _EditDoctorScreenState extends State<EditDoctorScreen> {
       await ApiService.updateDoctor(
         doctorId: doctorId,
         fullName: nameController.text.trim(),
-        specialty: specialtyController.text.trim(),
+        specialtyId: selectedSpecialtyId!,
         phoneNumber: phoneController.text.trim(),
         email: emailController.text.trim(),
-        image: widget.doctor['image']?.toString() ?? '',
+        image: imageUrl,
       );
 
       if (!mounted) return;
@@ -86,10 +178,36 @@ class _EditDoctorScreenState extends State<EditDoctorScreen> {
     }
   }
 
+  IconData getIconData(String iconName) {
+    switch (iconName) {
+      case 'favorite':
+        return Icons.favorite;
+      case 'medical_services':
+        return Icons.medical_services;
+      case 'psychology':
+        return Icons.psychology;
+      case 'child_care':
+        return Icons.child_care;
+      case 'face':
+        return Icons.face;
+      case 'healing':
+        return Icons.healing;
+      case 'local_hospital':
+        return Icons.local_hospital;
+      case 'vaccines':
+        return Icons.vaccines;
+      case 'visibility':
+        return Icons.visibility;
+      case 'elderly':
+        return Icons.elderly;
+      default:
+        return Icons.medical_services;
+    }
+  }
+
   @override
   void dispose() {
     nameController.dispose();
-    specialtyController.dispose();
     phoneController.dispose();
     emailController.dispose();
     super.dispose();
@@ -114,12 +232,28 @@ class _EditDoctorScreenState extends State<EditDoctorScreen> {
           child: ListView(
             children: [
               const SizedBox(height: 20),
-              const Icon(
-                Icons.edit,
-                size: 80,
-                color: primary,
+
+              Center(
+                child: CircleAvatar(
+                  radius: 52,
+                  backgroundColor: const Color(0xffEDE7FF),
+                  backgroundImage: previewImage,
+                  child: previewImage == null
+                      ? const Icon(Icons.person, size: 55, color: primary)
+                      : null,
+                ),
               ),
+
+              const SizedBox(height: 12),
+
+              OutlinedButton.icon(
+                onPressed: isLoading ? null : pickAndUploadImage,
+                icon: const Icon(Icons.image),
+                label: const Text('Choose Image'),
+              ),
+
               const SizedBox(height: 20),
+
               TextField(
                 controller: nameController,
                 decoration: inputDecoration(
@@ -127,15 +261,54 @@ class _EditDoctorScreenState extends State<EditDoctorScreen> {
                   icon: Icons.person,
                 ),
               ),
+
               const SizedBox(height: 16),
-              TextField(
-                controller: specialtyController,
+
+              isLoadingSpecialties
+                  ? Container(
+                height: 56,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: const CircularProgressIndicator(),
+              )
+                  : DropdownButtonFormField<int>(
+                value: selectedSpecialtyId,
                 decoration: inputDecoration(
                   hint: AppStrings.specialty,
                   icon: Icons.medical_services,
                 ),
+                items: specialties.map((specialty) {
+                  final id = specialty['specialtyId'];
+                  final name = specialty['name']?.toString() ?? '';
+                  final icon = specialty['icon']?.toString() ?? '';
+
+                  return DropdownMenuItem<int>(
+                    value: id is int ? id : int.tryParse(id.toString()),
+                    child: Row(
+                      children: [
+                        Icon(
+                          getIconData(icon),
+                          size: 20,
+                          color: primary,
+                        ),
+                        const SizedBox(width: 10),
+                        Text(name),
+                      ],
+                    ),
+                  );
+                }).toList(),
+                onChanged: (value) {
+                  setState(() {
+                    selectedSpecialtyId = value;
+                  });
+                },
               ),
+
               const SizedBox(height: 16),
+
               TextField(
                 controller: phoneController,
                 keyboardType: TextInputType.phone,
@@ -144,7 +317,9 @@ class _EditDoctorScreenState extends State<EditDoctorScreen> {
                   icon: Icons.phone,
                 ),
               ),
+
               const SizedBox(height: 16),
+
               TextField(
                 controller: emailController,
                 keyboardType: TextInputType.emailAddress,
@@ -153,7 +328,9 @@ class _EditDoctorScreenState extends State<EditDoctorScreen> {
                   icon: Icons.email,
                 ),
               ),
+
               const SizedBox(height: 26),
+
               SizedBox(
                 height: 52,
                 child: ElevatedButton(
