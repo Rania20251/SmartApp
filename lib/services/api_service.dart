@@ -105,8 +105,6 @@ class ApiService {
     }
   }
 
-
-
   static String doctorImageBase64FromBytes(Uint8List bytes) {
     return 'data:image/jpeg;base64,${base64Encode(bytes)}';
   }
@@ -133,9 +131,6 @@ class ApiService {
     );
 
     final body = await response.stream.bytesToString();
-
-    print('UPLOAD STATUS: ${response.statusCode}');
-    print('UPLOAD BODY: $body');
 
     if (response.statusCode == 200) {
       final data = jsonDecode(body);
@@ -167,9 +162,6 @@ class ApiService {
 
     final body = await response.stream.bytesToString();
 
-    print('UPLOAD STATUS: ${response.statusCode}');
-    print('UPLOAD BODY: $body');
-
     if (response.statusCode == 200) {
       final data = jsonDecode(body);
       final imageUrl = data['imageUrl']?.toString() ?? '';
@@ -200,9 +192,6 @@ class ApiService {
       )
           .timeout(const Duration(seconds: 20));
 
-      print('LOGIN STATUS: ${response.statusCode}');
-      print('LOGIN BODY: ${response.body}');
-
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         if (data is Map<String, dynamic>) return data;
@@ -212,6 +201,84 @@ class ApiService {
     } catch (e) {
       print('LOGIN ERROR: $e');
       return null;
+    }
+  }
+
+  static Future<bool> sendResetCode({
+    required String email,
+  }) async {
+    try {
+      final response = await http
+          .post(
+        Uri.parse('$baseUrl/Users/send-reset-code'),
+        headers: headers,
+        body: jsonEncode({
+          "email": email.trim(),
+        }),
+      )
+          .timeout(const Duration(seconds: 20));
+
+      print('SEND RESET CODE STATUS: ${response.statusCode}');
+      print('SEND RESET CODE BODY: ${response.body}');
+
+      return response.statusCode == 200 || response.statusCode == 204;
+    } catch (e) {
+      print('SEND RESET CODE ERROR: $e');
+      return false;
+    }
+  }
+
+  static Future<bool> verifyResetCode({
+    required String email,
+    required String code,
+  }) async {
+    try {
+      final response = await http
+          .post(
+        Uri.parse('$baseUrl/Users/verify-reset-code'),
+        headers: headers,
+        body: jsonEncode({
+          "email": email.trim(),
+          "code": code.trim(),
+        }),
+      )
+          .timeout(const Duration(seconds: 20));
+
+      print('VERIFY RESET CODE STATUS: ${response.statusCode}');
+      print('VERIFY RESET CODE BODY: ${response.body}');
+
+      return response.statusCode == 200 || response.statusCode == 204;
+    } catch (e) {
+      print('VERIFY RESET CODE ERROR: $e');
+      return false;
+    }
+  }
+
+  static Future<bool> resetPasswordWithCode({
+    required String email,
+    required String code,
+    required String newPassword,
+  }) async {
+    try {
+      final response = await http
+          .put(
+        Uri.parse('$baseUrl/Users/reset-password'),
+        headers: headers,
+        body: jsonEncode({
+          "email": email.trim(),
+          "code": code.trim(),
+          "newPassword": newPassword.trim(),
+        }),
+      )
+          .timeout(const Duration(seconds: 20));
+
+      print('RESET PASSWORD STATUS: ${response.statusCode}');
+      print('RESET PASSWORD BODY: ${response.body}');
+
+      return response.statusCode == 200 || response.statusCode == 204;
+    } catch (e) {
+      print('RESET PASSWORD ERROR: $e');
+      return false;
     }
   }
 
@@ -238,9 +305,6 @@ class ApiService {
         }),
       )
           .timeout(const Duration(seconds: 20));
-
-      print('REGISTER STATUS: ${response.statusCode}');
-      print('REGISTER BODY: ${response.body}');
 
       return response.statusCode == 200 || response.statusCode == 201;
     } catch (e) {
@@ -463,9 +527,6 @@ class ApiService {
     )
         .timeout(const Duration(seconds: 20));
 
-    print('CREATE DOCTOR STATUS: ${response.statusCode}');
-    print('CREATE DOCTOR BODY: ${response.body}');
-
     if (response.statusCode != 200 && response.statusCode != 201) {
       throw Exception('Failed to create doctor: ${response.body}');
     }
@@ -495,9 +556,6 @@ class ApiService {
       }),
     )
         .timeout(const Duration(seconds: 20));
-
-    print('UPDATE DOCTOR STATUS: ${response.statusCode}');
-    print('UPDATE DOCTOR BODY: ${response.body}');
 
     if (response.statusCode != 200 && response.statusCode != 204) {
       throw Exception('Failed to update doctor: ${response.body}');

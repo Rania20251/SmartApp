@@ -216,4 +216,5 @@ class AppStrings {
   static String get specialtyDeleteFailed => isArabic ? 'لا يمكن حذف التخصص لأنه مرتبط بأطباء' : 'Cannot delete specialty because it has doctors';
   static String get noSpecialtiesFound => isArabic ? 'لا توجد تخصصات' : 'No specialties found';
   static String get operationFailed => isArabic ? 'فشلت العملية' : 'Operation failed';
+
 }
