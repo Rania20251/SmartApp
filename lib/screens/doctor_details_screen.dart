@@ -1,6 +1,8 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
 import '../language/app_strings.dart';
 import '../services/api_service.dart';
 import '../services/user_session.dart';
@@ -30,11 +32,64 @@ class DoctorDetailsScreen extends StatefulWidget {
 class _DoctorDetailsScreenState extends State<DoctorDetailsScreen> {
   int selectedDay = 1;
   int selectedTime = 1;
+  bool isFavorite = false;
+  bool isBooked = false;
 
-  final List<String> daysEn = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu'];
-  final List<String> daysAr = ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس'];
-  final List<String> dates = ['16', '17', '18', '19', '20'];
   final List<String> times = ['09:00 AM', '10:30 AM', '12:00 PM'];
+
+  @override
+  void initState() {
+    super.initState();
+    loadFavorite();
+  }
+
+  String get favoriteKey =>
+      'favorite_doctor_${UserSession.userId ?? 0}_${widget.doctorId}';
+
+  List<DateTime> get availableDates {
+    final today = DateTime.now();
+    return List.generate(5, (index) {
+      final date = today.add(Duration(days: index + 1));
+      return DateTime(date.year, date.month, date.day);
+    });
+  }
+
+  Future<void> loadFavorite() async {
+    final prefs = await SharedPreferences.getInstance();
+
+    if (!mounted) return;
+
+    setState(() {
+      isFavorite = prefs.getBool(favoriteKey) ?? false;
+    });
+  }
+
+  Future<void> toggleFavorite() async {
+    final prefs = await SharedPreferences.getInstance();
+    final newValue = !isFavorite;
+
+    await prefs.setBool(favoriteKey, newValue);
+
+    if (!mounted) return;
+
+    setState(() {
+      isFavorite = newValue;
+    });
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          newValue
+              ? (AppStrings.isArabic
+              ? 'تمت إضافة الطبيب إلى المفضلة'
+              : 'Doctor added to favorites')
+              : (AppStrings.isArabic
+              ? 'تمت إزالة الطبيب من المفضلة'
+              : 'Doctor removed from favorites'),
+        ),
+      ),
+    );
+  }
 
   String get safeImagePath {
     final image = widget.imagePath.trim();
@@ -43,7 +98,7 @@ class _DoctorDetailsScreenState extends State<DoctorDetailsScreen> {
       return 'assets/images/profile.jpg';
     }
 
-    return image;
+    return ApiService.fixImageUrl(image);
   }
 
   String translateDoctorName(String name) {
@@ -78,15 +133,83 @@ class _DoctorDetailsScreenState extends State<DoctorDetailsScreen> {
 
     if (!AppStrings.isArabic) return specialty;
 
-    if (value.contains('cardiology') || value.contains('heart') || value.contains('قلب')) return 'القلب';
-    if (value.contains('dentistry') || value.contains('dental') || value.contains('أسنان') || value.contains('اسنان')) return 'الأسنان';
-    if (value.contains('neurology') || value.contains('neuro') || value.contains('أعصاب') || value.contains('اعصاب')) return 'الأعصاب';
-    if (value.contains('pediatrics') || value.contains('pedia') || value.contains('child') || value.contains('أطفال') || value.contains('اطفال')) return 'الأطفال';
-    if (value.contains('dermatology') || value.contains('derma') || value.contains('جلدية')) return 'الجلدية';
-    if (value.contains('ophthalmology') || value.contains('eye') || value.contains('عيون')) return 'العيون';
-    if (value.contains('surgery') || value.contains('جراحة')) return 'الجراحة';
+    if (value.contains('cardiology') ||
+        value.contains('heart') ||
+        value.contains('قلب')) {
+      return 'القلب';
+    }
+
+    if (value.contains('dentistry') ||
+        value.contains('dental') ||
+        value.contains('أسنان') ||
+        value.contains('اسنان')) {
+      return 'الأسنان';
+    }
+
+    if (value.contains('neurology') ||
+        value.contains('neuro') ||
+        value.contains('أعصاب') ||
+        value.contains('اعصاب')) {
+      return 'الأعصاب';
+    }
+
+    if (value.contains('pediatrics') ||
+        value.contains('pedia') ||
+        value.contains('child') ||
+        value.contains('أطفال') ||
+        value.contains('اطفال')) {
+      return 'الأطفال';
+    }
+
+    if (value.contains('dermatology') ||
+        value.contains('derma') ||
+        value.contains('جلدية')) {
+      return 'الجلدية';
+    }
+
+    if (value.contains('ophthalmology') ||
+        value.contains('eye') ||
+        value.contains('عيون')) {
+      return 'العيون';
+    }
+
+    if (value.contains('surgery') || value.contains('جراحة')) {
+      return 'الجراحة';
+    }
 
     return specialty;
+  }
+
+  String dayName(DateTime date) {
+    final daysEn = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    final daysAr = [
+      'الإثنين',
+      'الثلاثاء',
+      'الأربعاء',
+      'الخميس',
+      'الجمعة',
+      'السبت',
+      'الأحد'
+    ];
+
+    return AppStrings.isArabic ? daysAr[date.weekday - 1] : daysEn[date.weekday - 1];
+  }
+
+  DateTime selectedAppointmentDateTime() {
+    final date = availableDates[selectedDay];
+    final selectedTimeText = times[selectedTime];
+
+    final parts = selectedTimeText.split(' ');
+    final hm = parts.first.split(':');
+
+    int hour = int.tryParse(hm.first) ?? 9;
+    final minute = int.tryParse(hm.last) ?? 0;
+    final period = parts.length > 1 ? parts.last.toUpperCase() : 'AM';
+
+    if (period == 'PM' && hour != 12) hour += 12;
+    if (period == 'AM' && hour == 12) hour = 0;
+
+    return DateTime(date.year, date.month, date.day, hour, minute);
   }
 
   Widget doctorImage() {
@@ -159,13 +282,19 @@ class _DoctorDetailsScreenState extends State<DoctorDetailsScreen> {
 
   Future<void> bookAppointment() async {
     try {
+      final appointmentDate = selectedAppointmentDateTime();
+
       await ApiService.bookAppointment(
         patientId: UserSession.userId ?? 1,
         doctorId: widget.doctorId,
-        appointmentDate: DateTime.now().add(Duration(days: selectedDay + 1)),
+        appointmentDate: appointmentDate,
       );
 
       if (!mounted) return;
+
+      setState(() {
+        isBooked = true;
+      });
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(AppStrings.appointmentBooked)),
@@ -185,7 +314,7 @@ class _DoctorDetailsScreenState extends State<DoctorDetailsScreen> {
 
     final shownName = translateDoctorName(widget.name);
     final shownSpecialty = translateSpecialty(widget.specialty);
-    final days = AppStrings.isArabic ? daysAr : daysEn;
+    final dates = availableDates;
 
     return Directionality(
       textDirection: AppStrings.isArabic ? TextDirection.rtl : TextDirection.ltr,
@@ -196,9 +325,23 @@ class _DoctorDetailsScreenState extends State<DoctorDetailsScreen> {
           backgroundColor: Colors.white,
           foregroundColor: Colors.black,
           elevation: 0,
-          actions: const [
-            Icon(Icons.favorite_border),
-            SizedBox(width: 14),
+          actions: [
+            IconButton(
+              tooltip: AppStrings.isArabic ? 'المفضلة' : 'Favorite',
+              onPressed: toggleFavorite,
+              icon: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 200),
+                transitionBuilder: (child, animation) {
+                  return ScaleTransition(scale: animation, child: child);
+                },
+                child: Icon(
+                  isFavorite ? Icons.favorite : Icons.favorite_border,
+                  key: ValueKey<bool>(isFavorite),
+                  color: isFavorite ? Colors.red : Colors.black,
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
           ],
         ),
         body: ListView(
@@ -263,6 +406,33 @@ class _DoctorDetailsScreenState extends State<DoctorDetailsScreen> {
                 ],
               ),
             ),
+            if (isBooked) ...[
+              const SizedBox(height: 18),
+              Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: primary.withOpacity(.10),
+                  borderRadius: BorderRadius.circular(18),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.check_circle, color: primary),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        AppStrings.isArabic
+                            ? 'تم حجز الموعد وسيظهر في قائمة مواعيدي'
+                            : 'Appointment booked and will appear in My Appointments',
+                        style: const TextStyle(
+                          color: primary,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
             const SizedBox(height: 24),
             Text(
               AppStrings.isArabic ? 'عن الطبيب' : 'About Doctor',
@@ -285,12 +455,16 @@ class _DoctorDetailsScreenState extends State<DoctorDetailsScreen> {
             const SizedBox(height: 14),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: List.generate(days.length, (index) {
+              children: List.generate(dates.length, (index) {
                 final selected = selectedDay == index;
+                final date = dates[index];
 
                 return InkWell(
                   borderRadius: BorderRadius.circular(18),
-                  onTap: () => setState(() => selectedDay = index),
+                  onTap: () => setState(() {
+                    selectedDay = index;
+                    isBooked = false;
+                  }),
                   child: Container(
                     width: 58,
                     padding: const EdgeInsets.symmetric(vertical: 12),
@@ -301,7 +475,7 @@ class _DoctorDetailsScreenState extends State<DoctorDetailsScreen> {
                     child: Column(
                       children: [
                         Text(
-                          days[index],
+                          dayName(date),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
@@ -311,7 +485,7 @@ class _DoctorDetailsScreenState extends State<DoctorDetailsScreen> {
                         ),
                         const SizedBox(height: 6),
                         Text(
-                          dates[index],
+                          date.day.toString().padLeft(2, '0'),
                           style: TextStyle(
                             color: selected ? Colors.white : Colors.black,
                             fontWeight: FontWeight.bold,
@@ -331,7 +505,10 @@ class _DoctorDetailsScreenState extends State<DoctorDetailsScreen> {
 
                 return InkWell(
                   borderRadius: BorderRadius.circular(14),
-                  onTap: () => setState(() => selectedTime = index),
+                  onTap: () => setState(() {
+                    selectedTime = index;
+                    isBooked = false;
+                  }),
                   child: Container(
                     width: 100,
                     height: 44,
@@ -344,8 +521,7 @@ class _DoctorDetailsScreenState extends State<DoctorDetailsScreen> {
                       times[index],
                       style: TextStyle(
                         color: selected ? Colors.white : Colors.black,
-                        fontWeight:
-                        selected ? FontWeight.bold : FontWeight.normal,
+                        fontWeight: selected ? FontWeight.bold : FontWeight.normal,
                         fontSize: 13,
                       ),
                     ),
@@ -358,15 +534,17 @@ class _DoctorDetailsScreenState extends State<DoctorDetailsScreen> {
               height: 54,
               child: ElevatedButton.icon(
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: primary,
+                  backgroundColor: isBooked ? Colors.green : primary,
                   foregroundColor: Colors.white,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(16),
                   ),
                 ),
-                icon: const Icon(Icons.calendar_month),
+                icon: Icon(isBooked ? Icons.check_circle : Icons.calendar_month),
                 label: Text(
-                  AppStrings.bookAppointment,
+                  isBooked
+                      ? (AppStrings.isArabic ? 'تم الحجز' : 'Booked')
+                      : AppStrings.bookAppointment,
                   style: const TextStyle(fontSize: 17),
                 ),
                 onPressed: bookAppointment,

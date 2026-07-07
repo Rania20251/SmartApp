@@ -14,151 +14,154 @@ class AdminDashboardScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     const primary = Color(0xff5B2EFF);
 
-    return Scaffold(
-      backgroundColor: const Color(0xffF7F8FC),
-      appBar: AppBar(
-        title: Text(AppStrings.adminDashboard),
-        backgroundColor: Colors.white,
-        foregroundColor: Colors.black,
-        elevation: 0,
-        actions: const [
-          Icon(Icons.notifications_none),
-          SizedBox(width: 12),
-        ],
-      ),
-      body: FutureBuilder<List<int>>(
-        future: Future.wait([
-          ApiService.getUsersCount(),
-          ApiService.getDoctorsCount(),
-          ApiService.getAppointmentsCount(),
-          ApiService.getMedicalRecordsCount(),
-        ]),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
+    return Directionality(
+      textDirection: AppStrings.isArabic ? TextDirection.rtl : TextDirection.ltr,
+      child: Scaffold(
+        backgroundColor: const Color(0xffF7F8FC),
+        appBar: AppBar(
+          title: Text(AppStrings.adminDashboard),
+          backgroundColor: Colors.white,
+          foregroundColor: Colors.black,
+          elevation: 0,
+          actions: const [
+            Icon(Icons.notifications_none),
+            SizedBox(width: 12),
+          ],
+        ),
+        body: FutureBuilder<List<int>>(
+          future: Future.wait([
+            ApiService.getPatientsCount(),
+            ApiService.getDoctorsCount(),
+            ApiService.getAppointmentsCount(),
+            ApiService.getMedicalRecordsCount(),
+          ]),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
+            }
 
-          final data = snapshot.data ?? [0, 0, 0, 0];
+            final data = snapshot.data ?? [0, 0, 0, 0];
 
-          return ListView(
-            padding: const EdgeInsets.all(18),
-            children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: TopCard(
-                      title: AppStrings.totalPatients,
-                      value: data[0].toString(),
-                      icon: Icons.people,
-                      color: primary,
+            return ListView(
+              padding: const EdgeInsets.all(18),
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: TopCard(
+                        title: AppStrings.totalPatients,
+                        value: data[0].toString(),
+                        icon: Icons.people,
+                        color: primary,
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: TopCard(
-                      title: AppStrings.totalDoctors,
-                      value: data[1].toString(),
-                      icon: Icons.local_hospital,
-                      color: Colors.green,
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: TopCard(
+                        title: AppStrings.totalDoctors,
+                        value: data[1].toString(),
+                        icon: Icons.local_hospital,
+                        color: Colors.green,
+                      ),
                     ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 10),
-              Row(
-                children: [
-                  Expanded(
-                    child: TopCard(
-                      title: AppStrings.appointments,
-                      value: data[2].toString(),
-                      icon: Icons.calendar_month,
-                      color: Colors.red,
+                  ],
+                ),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TopCard(
+                        title: AppStrings.appointments,
+                        value: data[2].toString(),
+                        icon: Icons.calendar_month,
+                        color: Colors.red,
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: TopCard(
-                      title: AppStrings.pending,
-                      value: '18',
-                      icon: Icons.access_time,
-                      color: Colors.orange,
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: TopCard(
+                        title: AppStrings.pending,
+                        value: data[3].toString(),
+                        icon: Icons.access_time,
+                        color: Colors.orange,
+                      ),
                     ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 22),
-              const ChartCard(),
-              const SizedBox(height: 18),
-              const LatestPatientsCard(),
-              const SizedBox(height: 22),
-              Text(
-                AppStrings.management,
-                style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 12),
-              ManageTile(
-                icon: Icons.people,
-                title: AppStrings.manageUsers,
-                subtitle: AppStrings.manageUsersSubtitle,
-                color: primary,
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => const ManageUsersScreen()),
-                  );
-                },
-              ),
-              ManageTile(
-                icon: Icons.local_hospital,
-                title: AppStrings.manageDoctors,
-                subtitle: AppStrings.manageDoctorsSubtitle,
-                color: primary,
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => const ManageDoctorsScreen()),
-                  );
-                },
-              ),
-              ManageTile(
-                icon: Icons.category,
-                title: AppStrings.manageSpecialties,
-                subtitle: AppStrings.manageSpecialtiesSubtitle,
-                color: Colors.purple,
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => const ManageSpecialtiesScreen()),
-                  );
-                },
-              ),
-              ManageTile(
-                icon: Icons.event_note,
-                title: AppStrings.manageAppointments,
-                subtitle: AppStrings.manageAppointmentsSubtitle,
-                color: Colors.red,
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => const ManageAppointmentsScreen()),
-                  );
-                },
-              ),
-              ManageTile(
-                icon: Icons.description,
-                title: AppStrings.manageMedicalRecords,
-                subtitle: AppStrings.manageMedicalRecordsSubtitle,
-                color: Colors.orange,
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => const ManageMedicalRecordsScreen()),
-                  );
-                },
-              ),
-            ],
-          );
-        },
+                  ],
+                ),
+                const SizedBox(height: 22),
+                const ChartCard(),
+                const SizedBox(height: 18),
+                const LatestPatientsCard(),
+                const SizedBox(height: 22),
+                Text(
+                  AppStrings.management,
+                  style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 12),
+                ManageTile(
+                  icon: Icons.people,
+                  title: AppStrings.manageUsers,
+                  subtitle: AppStrings.manageUsersSubtitle,
+                  color: primary,
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const ManageUsersScreen()),
+                    );
+                  },
+                ),
+                ManageTile(
+                  icon: Icons.local_hospital,
+                  title: AppStrings.manageDoctors,
+                  subtitle: AppStrings.manageDoctorsSubtitle,
+                  color: primary,
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const ManageDoctorsScreen()),
+                    );
+                  },
+                ),
+                ManageTile(
+                  icon: Icons.category,
+                  title: AppStrings.manageSpecialties,
+                  subtitle: AppStrings.manageSpecialtiesSubtitle,
+                  color: Colors.purple,
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const ManageSpecialtiesScreen()),
+                    );
+                  },
+                ),
+                ManageTile(
+                  icon: Icons.event_note,
+                  title: AppStrings.manageAppointments,
+                  subtitle: AppStrings.manageAppointmentsSubtitle,
+                  color: Colors.red,
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const ManageAppointmentsScreen()),
+                    );
+                  },
+                ),
+                ManageTile(
+                  icon: Icons.description,
+                  title: AppStrings.manageMedicalRecords,
+                  subtitle: AppStrings.manageMedicalRecordsSubtitle,
+                  color: Colors.orange,
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const ManageMedicalRecordsScreen()),
+                    );
+                  },
+                ),
+              ],
+            );
+          },
+        ),
       ),
     );
   }
@@ -329,67 +332,117 @@ class ChartPainter extends CustomPainter {
 class LatestPatientsCard extends StatelessWidget {
   const LatestPatientsCard({super.key});
 
+  String getPatientName(dynamic patient) {
+    return patient['fullName']?.toString() ??
+        patient['FullName']?.toString() ??
+        AppStrings.noName;
+  }
+
+  String getPatientDate(dynamic patient) {
+    final id = int.tryParse(
+      patient['userId']?.toString() ??
+          patient['UserId']?.toString() ??
+          '0',
+    ) ??
+        0;
+
+    return id > 0 ? '${AppStrings.userId}: $id' : '';
+  }
+
   @override
   Widget build(BuildContext context) {
-    final patients = AppStrings.isArabic
-        ? ['أحمد محمد', 'سارة علي', 'محمد خالد']
-        : ['Ahmed Mohammad', 'Sara Ali', 'Mohammad Khaled'];
+    return FutureBuilder<List<dynamic>>(
+      future: ApiService.getRecentPatients(),
+      builder: (context, snapshot) {
+        final isLoading = snapshot.connectionState == ConnectionState.waiting;
+        final patients = snapshot.data ?? [];
 
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(22),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            AppStrings.latestPatients,
-            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+        return Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(22),
           ),
-          const SizedBox(height: 12),
-          for (int i = 0; i < patients.length; i++)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: Row(
-                children: [
-                  const CircleAvatar(
-                    radius: 18,
-                    backgroundColor: Color(0xffEDE7FF),
-                    child: Icon(Icons.person, color: Color(0xff5B2EFF), size: 19),
+          child: Column(
+            crossAxisAlignment: AppStrings.isArabic
+                ? CrossAxisAlignment.end
+                : CrossAxisAlignment.start,
+            children: [
+              Text(
+                AppStrings.latestPatients,
+                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 12),
+              if (isLoading)
+                const Center(
+                  child: Padding(
+                    padding: EdgeInsets.all(16),
+                    child: CircularProgressIndicator(),
                   ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      patients[i],
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontWeight: FontWeight.bold),
+                )
+              else if (patients.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: Text(
+                    AppStrings.noUsersFound,
+                    style: const TextStyle(color: Colors.grey),
+                  ),
+                )
+              else
+                for (int i = 0; i < patients.length; i++)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: Row(
+                      children: [
+                        const CircleAvatar(
+                          radius: 18,
+                          backgroundColor: Color(0xffEDE7FF),
+                          child: Icon(Icons.person, color: Color(0xff5B2EFF), size: 19),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            getPatientName(patients[i]),
+                            textDirection: AppStrings.isArabic
+                                ? TextDirection.rtl
+                                : TextDirection.ltr,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                        ),
+                        Text(
+                          getPatientDate(patients[i]),
+                          textDirection: AppStrings.isArabic
+                              ? TextDirection.rtl
+                              : TextDirection.ltr,
+                          style: const TextStyle(color: Colors.grey, fontSize: 11),
+                        ),
+                      ],
                     ),
                   ),
-                  Text(
-                    i == 0 ? '25 Jun 2026' : '24 Jun 2026',
-                    style: const TextStyle(color: Colors.grey, fontSize: 11),
+              SizedBox(
+                width: double.infinity,
+                height: 44,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xff5B2EFF),
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                   ),
-                ],
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const ManageUsersScreen()),
+                    );
+                  },
+                  child: Text(AppStrings.viewAll),
+                ),
               ),
-            ),
-          SizedBox(
-            width: double.infinity,
-            height: 44,
-            child: ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xff5B2EFF),
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-              ),
-              onPressed: () {},
-              child: Text(AppStrings.viewAll),
-            ),
+            ],
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 }
@@ -412,6 +465,10 @@ class ManageTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final arrowIcon = AppStrings.isArabic
+        ? Icons.arrow_back_ios_new
+        : Icons.arrow_forward_ios;
+
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
@@ -432,7 +489,9 @@ class ManageTile extends StatelessWidget {
               const SizedBox(width: 14),
               Expanded(
                 child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                  crossAxisAlignment: AppStrings.isArabic
+                      ? CrossAxisAlignment.end
+                      : CrossAxisAlignment.start,
                   children: [
                     Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
                     const SizedBox(height: 3),
@@ -445,7 +504,7 @@ class ManageTile extends StatelessWidget {
                   ],
                 ),
               ),
-              const Icon(Icons.arrow_forward_ios, size: 16),
+              Icon(arrowIcon, size: 16),
             ],
           ),
         ),

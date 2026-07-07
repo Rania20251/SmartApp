@@ -299,6 +299,42 @@ class ApiService {
     return [];
   }
 
+  static Future<List<dynamic>> getPatients() async {
+    try {
+      final response = await http
+          .get(Uri.parse('$baseUrl/Users/patients'), headers: headers)
+          .timeout(const Duration(seconds: 20));
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data is List) return data;
+      }
+
+      return [];
+    } catch (e) {
+      print('GET PATIENTS ERROR: $e');
+      return [];
+    }
+  }
+
+  static Future<List<dynamic>> getRecentPatients() async {
+    try {
+      final response = await http
+          .get(Uri.parse('$baseUrl/Users/recent-patients'), headers: headers)
+          .timeout(const Duration(seconds: 20));
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data is List) return data;
+      }
+
+      return [];
+    } catch (e) {
+      print('GET RECENT PATIENTS ERROR: $e');
+      return [];
+    }
+  }
+
   static Future<void> deleteUser(int userId) async {
     final response = await http
         .delete(Uri.parse('$baseUrl/Users/$userId'), headers: headers)
@@ -312,6 +348,11 @@ class ApiService {
   static Future<int> getUsersCount() async {
     final users = await getUsers();
     return users.length;
+  }
+
+  static Future<int> getPatientsCount() async {
+    final patients = await getPatients();
+    return patients.length;
   }
 
   static Future<bool> changePassword({
@@ -493,6 +534,41 @@ class ApiService {
 
     if (response.statusCode != 200 && response.statusCode != 201) {
       throw Exception('Failed to book appointment');
+    }
+  }
+
+  static Future<List<dynamic>> getAllAppointments() async {
+    try {
+      final response = await http
+          .get(Uri.parse('$baseUrl/Appointments'), headers: headers)
+          .timeout(const Duration(seconds: 20));
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data is! List) return [];
+
+        return data.map((appointment) {
+          if (appointment is Map<String, dynamic>) {
+            final doctorImage = appointment['doctorImage'] ??
+                appointment['DoctorImage'] ??
+                appointment['image'] ??
+                appointment['Image'];
+
+            final fixedImage = fixImageUrl(doctorImage?.toString() ?? '');
+
+            appointment['doctorImage'] = fixedImage;
+            appointment['DoctorImage'] = fixedImage;
+            appointment['image'] = fixedImage;
+          }
+
+          return appointment;
+        }).toList();
+      }
+
+      return [];
+    } catch (e) {
+      print('GET ALL APPOINTMENTS ERROR: $e');
+      return [];
     }
   }
 
