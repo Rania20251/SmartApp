@@ -17,6 +17,7 @@ class ApiService {
   static final Uri doctorsUrl = Uri.parse('$baseUrl/Doctors');
   static final Uri appointmentsUrl = Uri.parse('$baseUrl/Appointments');
   static final Uri medicalRecordsUrl = Uri.parse('$baseUrl/MedicalRecords');
+  static final Uri bannersUrl = Uri.parse('$baseUrl/Banners');
 
   static Map<String, String> get headers => const {
     'Content-Type': 'application/json',
@@ -27,11 +28,13 @@ class ApiService {
   static List<dynamic>? _specialtiesCache;
   static List<dynamic>? _appointmentsCache;
   static final Map<int, List<dynamic>> _notificationsCache = {};
+  static List<dynamic>? _bannersCache;
 
   static Future<List<dynamic>>? _doctorsRequest;
   static Future<List<dynamic>>? _specialtiesRequest;
   static Future<List<dynamic>>? _appointmentsRequest;
   static final Map<int, Future<List<dynamic>>> _notificationsRequests = {};
+  static Future<List<dynamic>>? _bannersRequest;
 
   static void clearDoctorsCache() {
     _doctorsCache = null;
@@ -49,6 +52,11 @@ class ApiService {
     _appointmentsRequest = null;
   }
 
+  static void resetAppointmentsCache() {
+    _appointmentsCache = null;
+    _appointmentsRequest = null;
+  }
+
   static void clearNotificationsCache([int? userId]) {
     if (userId == null) {
       _notificationsCache.clear();
@@ -58,6 +66,97 @@ class ApiService {
 
     _notificationsCache.remove(userId);
     _notificationsRequests.remove(userId);
+  }
+
+  static void clearBannersCache() {
+    _bannersCache = null;
+    _bannersRequest = null;
+  }
+
+  static Future<List<dynamic>> getBanners({
+    bool forceRefresh = false,
+  }) async {
+    if (!forceRefresh && _bannersCache != null) return _bannersCache!;
+    if (!forceRefresh && _bannersRequest != null) return _bannersRequest!;
+
+    final request = (() async {
+      try {
+        final response =
+        await http.get(bannersUrl, headers: headers).timeout(normalTimeout);
+
+        if (response.statusCode == 200) {
+          final data = decodeList(response.body);
+
+          final banners = data.map((banner) {
+            if (banner is Map<String, dynamic>) {
+              banner['imageUrl'] = fixImageUrl(
+                banner['imageUrl']?.toString() ??
+                    banner['ImageUrl']?.toString() ??
+                    '',
+              );
+            }
+            return banner;
+          }).toList();
+
+          _bannersCache = banners;
+          return banners;
+        }
+
+        return _bannersCache ?? [];
+      } catch (_) {
+        return _bannersCache ?? [];
+      } finally {
+        _bannersRequest = null;
+      }
+    })();
+
+    _bannersRequest = request;
+    return request;
+  }
+
+  static Future<void> uploadBannerImageBytes({
+    required Uint8List bytes,
+    required String fileName,
+    required int position,
+  }) async {
+    final request = http.MultipartRequest(
+      'POST',
+      Uri.parse('$baseUrl/Banners/upload'),
+    );
+
+    request.fields['position'] = position.toString();
+
+    request.files.add(
+      http.MultipartFile.fromBytes(
+        'file',
+        bytes,
+        filename: fileName,
+      ),
+    );
+
+    final response = await request.send().timeout(uploadTimeout);
+    final body = await response.stream.bytesToString();
+
+    if (response.statusCode != 200 && response.statusCode != 201) {
+      throw Exception('Failed to upload banner image: $body');
+    }
+
+    clearBannersCache();
+  }
+
+  static Future<void> deleteBannerImage(int position) async {
+    final response = await http
+        .delete(
+      Uri.parse('$baseUrl/Banners/$position'),
+      headers: headers,
+    )
+        .timeout(normalTimeout);
+
+    if (response.statusCode != 200 && response.statusCode != 204) {
+      throw Exception('Failed to delete banner image');
+    }
+
+    clearBannersCache();
   }
 
   static String fixImageUrl(String image) {
@@ -79,13 +178,22 @@ class ApiService {
   }
 
   static String getSpecialtyName(dynamic doctor) {
-    final specialtyNavigation = doctor['specialtyNavigation'];
+    if (doctor is! Map) return '';
+
+    final specialtyNavigation =
+        doctor['specialtyNavigation'] ?? doctor['SpecialtyNavigation'];
 
     if (specialtyNavigation is Map<String, dynamic>) {
-      return specialtyNavigation['name']?.toString() ?? '';
+      return specialtyNavigation['name']?.toString() ??
+          specialtyNavigation['Name']?.toString() ??
+          '';
     }
 
-    return doctor['specialty']?.toString() ?? '';
+    return doctor['specialty']?.toString() ??
+        doctor['Specialty']?.toString() ??
+        doctor['specialtyName']?.toString() ??
+        doctor['SpecialtyName']?.toString() ??
+        '';
   }
 
   static List<dynamic> decodeList(String body) {
@@ -110,12 +218,39 @@ class ApiService {
         await http.get(specialtiesUrl, headers: headers).timeout(normalTimeout);
 
         if (response.statusCode == 200) {
-          _specialtiesCache = decodeList(response.body);
+          final data = decodeList(response.body);
+
+          final specialties = data.where((item) {
+            if (item is! Map) return false;
+
+            final id = item['specialtyId'] ?? item['SpecialtyId'] ?? item['id'] ?? item['Id'];
+            final name = item['name'] ?? item['Name'] ?? item['specialtyName'] ?? item['SpecialtyName'];
+
+            final parsedId = id is int ? id : int.tryParse(id?.toString() ?? '');
+
+            return parsedId != null &&
+                parsedId > 0 &&
+                name != null &&
+                name.toString().trim().isNotEmpty;
+          }).map((item) {
+            if (item is Map<String, dynamic>) {
+              final id = item['specialtyId'] ?? item['SpecialtyId'] ?? item['id'] ?? item['Id'];
+              final name = item['name'] ?? item['Name'] ?? item['specialtyName'] ?? item['SpecialtyName'];
+              final icon = item['icon'] ?? item['Icon'] ?? '';
+
+              item['specialtyId'] = id is int ? id : int.tryParse(id.toString()) ?? 0;
+              item['name'] = name.toString();
+              item['icon'] = icon.toString();
+            }
+
+            return item;
+          }).toList();
+
+          _specialtiesCache = specialties;
           return _specialtiesCache!;
         }
 
-        _specialtiesCache = [];
-        return [];
+        return _specialtiesCache ?? [];
       } catch (_) {
         return _specialtiesCache ?? [];
       } finally {
@@ -584,16 +719,30 @@ class ApiService {
     required String email,
     required String image,
   }) async {
+    final cleanName = fullName.trim();
+    final cleanPhone = phoneNumber.trim();
+    final cleanEmail = email.trim();
+    final cleanImage = image.trim().isEmpty ? '' : fixImageUrl(image);
+
+    if (cleanName.isEmpty) {
+      throw Exception('Doctor name is required');
+    }
+
+    if (specialtyId <= 0) {
+      throw Exception('Please select a specialty');
+    }
+
     final response = await http
         .post(
       doctorsUrl,
       headers: headers,
       body: jsonEncode({
-        'fullName': fullName.trim(),
+        'doctorId': 0,
+        'fullName': cleanName,
         'specialtyId': specialtyId,
-        'phoneNumber': phoneNumber.trim(),
-        'email': email.trim(),
-        'image': fixImageUrl(image),
+        'phoneNumber': cleanPhone,
+        'email': cleanEmail,
+        'image': cleanImage,
       }),
     )
         .timeout(normalTimeout);
@@ -669,15 +818,18 @@ class ApiService {
       throw Exception('Failed to book appointment');
     }
 
-    clearAppointmentsCache();
+    resetAppointmentsCache();
     clearNotificationsCache(patientId);
   }
 
   static Future<List<dynamic>> getAllAppointments({
     bool forceRefresh = false,
   }) async {
-    if (!forceRefresh && _appointmentsCache != null) return _appointmentsCache!;
-    if (!forceRefresh && _appointmentsRequest != null) {
+    if (!forceRefresh && _appointmentsCache != null) {
+      return _appointmentsCache!;
+    }
+
+    if (_appointmentsRequest != null) {
       return _appointmentsRequest!;
     }
 
@@ -707,12 +859,17 @@ class ApiService {
             return appointment;
           }).toList();
 
-          _appointmentsCache = appointments;
-          return appointments;
+          // Important for mobile:
+          // Do not replace a good cached list with an empty list during refresh.
+          // Sometimes the hosting is slow and returns late/empty while the UI is refreshing.
+          if (appointments.isNotEmpty || _appointmentsCache == null) {
+            _appointmentsCache = appointments;
+          }
+
+          return _appointmentsCache ?? appointments;
         }
 
-        _appointmentsCache = [];
-        return [];
+        return _appointmentsCache ?? [];
       } catch (_) {
         return _appointmentsCache ?? [];
       } finally {
@@ -747,17 +904,23 @@ class ApiService {
     required Map<String, dynamic> appointment,
     required String status,
   }) async {
-    final appointmentId = appointment['appointmentId'];
+    final appointmentId =
+        appointment['appointmentId'] ?? appointment['AppointmentId'];
+
+    final patientId = appointment['patientId'] ?? appointment['PatientId'];
+    final doctorId = appointment['doctorId'] ?? appointment['DoctorId'];
+    final appointmentDate =
+        appointment['appointmentDate'] ?? appointment['AppointmentDate'];
 
     final response = await http
         .put(
       Uri.parse('$baseUrl/Appointments/$appointmentId'),
       headers: headers,
       body: jsonEncode({
-        'appointmentId': appointment['appointmentId'],
-        'patientId': appointment['patientId'],
-        'doctorId': appointment['doctorId'],
-        'appointmentDate': appointment['appointmentDate'],
+        'appointmentId': appointmentId,
+        'patientId': patientId,
+        'doctorId': doctorId,
+        'appointmentDate': appointmentDate,
         'status': status,
       }),
     )
@@ -767,7 +930,22 @@ class ApiService {
       throw Exception('Failed to update appointment status');
     }
 
-    clearAppointmentsCache();
+    // Update local cache immediately instead of clearing it.
+    // This keeps Manage Appointments visible and fast on mobile.
+    if (_appointmentsCache != null) {
+      for (final item in _appointmentsCache!) {
+        if (item is Map<String, dynamic>) {
+          final id = item['appointmentId'] ?? item['AppointmentId'];
+          if (id.toString() == appointmentId.toString()) {
+            item['status'] = status;
+            item['Status'] = status;
+            break;
+          }
+        }
+      }
+    }
+
+    _appointmentsRequest = null;
     clearNotificationsCache();
   }
 
@@ -793,7 +971,7 @@ class ApiService {
       throw Exception('Failed to delete appointment');
     }
 
-    clearAppointmentsCache();
+    resetAppointmentsCache();
     clearNotificationsCache();
   }
 

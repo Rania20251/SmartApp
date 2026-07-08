@@ -41,14 +41,39 @@ class _AddDoctorScreenState extends State<AddDoctorScreen> {
   }
 
   Future<void> loadSpecialties() async {
+    setState(() {
+      isLoadingSpecialties = true;
+    });
+
     try {
-      final data = await ApiService.getSpecialties();
+      final data = await ApiService.getSpecialties(forceRefresh: true);
+
+      final validSpecialties = data.where((specialty) {
+        final id = getSpecialtyId(specialty);
+        final name = getSpecialtyName(specialty);
+        return id != null && id > 0 && name.trim().isNotEmpty;
+      }).toList();
 
       if (!mounted) return;
 
       setState(() {
-        specialties = data;
+        specialties = validSpecialties;
         isLoadingSpecialties = false;
+
+        if (selectedSpecialtyId == null && specialties.isNotEmpty) {
+          selectedSpecialtyId = getSpecialtyId(specialties.first);
+        }
+
+        if (selectedSpecialtyId != null) {
+          final exists = specialties.any(
+                (s) => getSpecialtyId(s) == selectedSpecialtyId,
+          );
+
+          if (!exists) {
+            selectedSpecialtyId =
+            specialties.isNotEmpty ? getSpecialtyId(specialties.first) : null;
+          }
+        }
       });
     } catch (_) {
       if (!mounted) return;
@@ -73,6 +98,7 @@ class _AddDoctorScreenState extends State<AddDoctorScreen> {
     final picked = await picker.pickImage(
       source: ImageSource.gallery,
       imageQuality: 80,
+      maxWidth: 1200,
     );
 
     if (picked == null) return;
@@ -108,8 +134,9 @@ class _AddDoctorScreenState extends State<AddDoctorScreen> {
       return;
     }
 
-    if (selectedSpecialtyId == null) {
+    if (selectedSpecialtyId == null || selectedSpecialtyId! <= 0) {
       showMessage(AppStrings.enterSpecialty);
+      await loadSpecialties();
       return;
     }
 
@@ -129,6 +156,8 @@ class _AddDoctorScreenState extends State<AddDoctorScreen> {
         email: email,
         image: uploadedImageUrl,
       );
+
+      ApiService.clearDoctorsCache();
 
       if (!mounted) return;
 
@@ -172,6 +201,37 @@ class _AddDoctorScreenState extends State<AddDoctorScreen> {
     }
   }
 
+  int? getSpecialtyId(dynamic specialty) {
+    if (specialty is! Map) return null;
+
+    final id = specialty['specialtyId'] ??
+        specialty['SpecialtyId'] ??
+        specialty['id'] ??
+        specialty['Id'];
+
+    if (id is int) return id;
+
+    return int.tryParse(id?.toString() ?? '');
+  }
+
+  String getSpecialtyName(dynamic specialty) {
+    if (specialty is! Map) return '';
+
+    return specialty['name']?.toString() ??
+        specialty['Name']?.toString() ??
+        specialty['specialtyName']?.toString() ??
+        specialty['SpecialtyName']?.toString() ??
+        '';
+  }
+
+  String getSpecialtyIcon(dynamic specialty) {
+    if (specialty is! Map) return '';
+
+    return specialty['icon']?.toString() ??
+        specialty['Icon']?.toString() ??
+        '';
+  }
+
   ImageProvider? get previewImage {
     final bytes = selectedImageBytes;
 
@@ -189,32 +249,42 @@ class _AddDoctorScreenState extends State<AddDoctorScreen> {
   }
 
   List<DropdownMenuItem<int>> specialtyItems() {
-    return specialties.map((specialty) {
-      final id = specialty['specialtyId'];
-      final value = id is int ? id : int.tryParse(id.toString());
-      final name = specialty['name']?.toString() ?? '';
-      final icon = specialty['icon']?.toString() ?? '';
+    final items = <DropdownMenuItem<int>>[];
 
-      return DropdownMenuItem<int>(
-        value: value,
-        child: Row(
-          children: [
-            Icon(
-              getIconData(icon),
-              size: 20,
-              color: primary,
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(
-                name,
-                overflow: TextOverflow.ellipsis,
+    for (final specialty in specialties) {
+      final value = getSpecialtyId(specialty);
+
+      if (value == null || value <= 0) continue;
+
+      final name = getSpecialtyName(specialty);
+      final icon = getSpecialtyIcon(specialty);
+
+      if (name.trim().isEmpty) continue;
+
+      items.add(
+        DropdownMenuItem<int>(
+          value: value,
+          child: Row(
+            children: [
+              Icon(
+                getIconData(icon),
+                size: 20,
+                color: primary,
               ),
-            ),
-          ],
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  name,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
         ),
       );
-    }).toList();
+    }
+
+    return items;
   }
 
   @override
@@ -228,6 +298,7 @@ class _AddDoctorScreenState extends State<AddDoctorScreen> {
   @override
   Widget build(BuildContext context) {
     final image = previewImage;
+    final items = specialtyItems();
 
     return Scaffold(
       backgroundColor: background,
@@ -286,12 +357,17 @@ class _AddDoctorScreenState extends State<AddDoctorScreen> {
               )
                   : DropdownButtonFormField<int>(
                 value: selectedSpecialtyId,
+                isExpanded: true,
                 decoration: inputDecoration(
-                  hint: AppStrings.specialty,
+                  hint: AppStrings.specialty.isNotEmpty
+                      ? AppStrings.specialty
+                      : 'Select Specialty',
                   icon: Icons.medical_services,
                 ),
-                items: specialtyItems(),
-                onChanged: (value) {
+                items: items,
+                onChanged: isLoading || items.isEmpty
+                    ? null
+                    : (value) {
                   if (selectedSpecialtyId == value) return;
 
                   setState(() {
@@ -299,6 +375,26 @@ class _AddDoctorScreenState extends State<AddDoctorScreen> {
                   });
                 },
               ),
+              if (!isLoadingSpecialties && items.isEmpty) ...[
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        AppStrings.enterSpecialty,
+                        style: const TextStyle(
+                          color: Colors.red,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: loadSpecialties,
+                      child: Text(AppStrings.isArabic ? 'إعادة تحميل' : 'Reload'),
+                    ),
+                  ],
+                ),
+              ],
               const SizedBox(height: 16),
               TextField(
                 controller: phoneController,
@@ -333,7 +429,14 @@ class _AddDoctorScreenState extends State<AddDoctorScreen> {
                   ),
                   onPressed: isLoading ? null : addDoctor,
                   child: isLoading
-                      ? const CircularProgressIndicator(color: Colors.white)
+                      ? const SizedBox(
+                    width: 24,
+                    height: 24,
+                    child: CircularProgressIndicator(
+                      color: Colors.white,
+                      strokeWidth: 3,
+                    ),
+                  )
                       : Text(
                     AppStrings.addDoctor,
                     style: const TextStyle(fontSize: 18),

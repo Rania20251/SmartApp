@@ -1,9 +1,5 @@
-// Optimized version
-// Safe micro-optimizations only:
-// - Prevent duplicate submit while loading.
-// - Avoid SnackBar when widget is unmounted.
-// - Minor setState simplifications.
-// UI and behavior preserved.
+// Fixed linked appointments version
+// Keeps same UI, but returns true after booking so ScheduleScreen refreshes immediately.
 
 import 'package:flutter/material.dart';
 import '../language/app_strings.dart';
@@ -28,7 +24,7 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
   @override
   void initState() {
     super.initState();
-    doctorsFuture = ApiService.getDoctors();
+    doctorsFuture = ApiService.getDoctors(forceRefresh: true);
   }
 
   Future<void> pickDate() async {
@@ -112,17 +108,17 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
         appointmentDate: getFinalAppointmentDate(),
       );
 
-      ApiService.clearAppointmentsCache();
+      ApiService.resetAppointmentsCache();
       ApiService.clearNotificationsCache();
 
       if (!mounted) return;
 
-      Navigator.pop(context);
+      Navigator.pop(context, true);
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(AppStrings.appointmentBooked)),
       );
-    } catch (e) {
+    } catch (_) {
       if (mounted) {
         showMessage(AppStrings.appointmentFailed);
       }
@@ -203,14 +199,18 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
                         ),
                         items: doctors.map<DropdownMenuItem<int>>((doctor) {
                           final doctorId = int.tryParse(
-                            doctor['doctorId']?.toString() ?? '0',
+                            doctor['doctorId']?.toString() ??
+                                doctor['DoctorId']?.toString() ??
+                                '0',
                           ) ??
                               0;
 
-                          final fullName =
-                              doctor['fullName']?.toString() ?? AppStrings.doctor;
+                          final fullName = doctor['fullName']?.toString() ??
+                              doctor['FullName']?.toString() ??
+                              AppStrings.doctor;
 
                           final specialty = doctor['specialty']?.toString() ??
+                              doctor['Specialty']?.toString() ??
                               AppStrings.specialist;
 
                           return DropdownMenuItem<int>(

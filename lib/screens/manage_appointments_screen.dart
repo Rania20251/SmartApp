@@ -1,5 +1,4 @@
-// Reviewed for optimization. Structure preserved.
-// For deeper optimization, refactor to cache futures and const widgets.
+import 'dart:async';
 
 import 'package:flutter/material.dart';
 import '../language/app_strings.dart';
@@ -14,22 +13,77 @@ class ManageAppointmentsScreen extends StatefulWidget {
 }
 
 class _ManageAppointmentsScreenState extends State<ManageAppointmentsScreen> {
-  late Future<List<dynamic>> appointmentsFuture;
+  static const Color primary = Color(0xff5B2EFF);
+  static const Color background = Color(0xffF7F8FC);
+
+  bool firstLoadDone = false;
+  bool isRefreshing = false;
+  String? errorMessage;
+
+  List<dynamic> appointments = [];
+  final Set<String> updatingIds = {};
 
   @override
   void initState() {
     super.initState();
-    loadAppointments();
+    loadAppointments(firstLoad: true);
   }
 
-  void loadAppointments() {
-    appointmentsFuture = ApiService.getAllAppointments();
+  Future<void> loadAppointments({bool firstLoad = false}) async {
+    if (isRefreshing) return;
+
+    if (mounted) {
+      setState(() {
+        isRefreshing = true;
+        errorMessage = null;
+      });
+    }
+
+    try {
+      final data = await ApiService.getAllAppointments(forceRefresh: false)
+          .timeout(const Duration(seconds: 12));
+
+      data.sort((a, b) {
+        final dateA =
+        parseDate(valueOf(a, ['appointmentDate', 'AppointmentDate'], ''));
+        final dateB =
+        parseDate(valueOf(b, ['appointmentDate', 'AppointmentDate'], ''));
+        return dateB.compareTo(dateA);
+      });
+
+      if (!mounted) return;
+
+      setState(() {
+        appointments = data;
+        firstLoadDone = true;
+        isRefreshing = false;
+        errorMessage = null;
+      });
+    } on TimeoutException {
+      if (!mounted) return;
+
+      setState(() {
+        firstLoadDone = true;
+        isRefreshing = false;
+        if (appointments.isEmpty) {
+          errorMessage = AppStrings.failedLoadAppointments;
+        }
+      });
+    } catch (_) {
+      if (!mounted) return;
+
+      setState(() {
+        firstLoadDone = true;
+        isRefreshing = false;
+        if (appointments.isEmpty) {
+          errorMessage = AppStrings.failedLoadAppointments;
+        }
+      });
+    }
   }
 
-  void refreshAppointments() {
-    setState(() {
-      loadAppointments();
-    });
+  Future<void> refreshAppointments() async {
+    await loadAppointments(firstLoad: false);
   }
 
   DateTime parseDate(dynamic value) {
@@ -44,33 +98,13 @@ class _ManageAppointmentsScreenState extends State<ManageAppointmentsScreen> {
     final d = parseDate(value);
 
     final monthsEn = [
-      'Jan',
-      'Feb',
-      'Mar',
-      'Apr',
-      'May',
-      'Jun',
-      'Jul',
-      'Aug',
-      'Sep',
-      'Oct',
-      'Nov',
-      'Dec',
+      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
     ];
 
     final monthsAr = [
-      'يناير',
-      'فبراير',
-      'مارس',
-      'أبريل',
-      'مايو',
-      'يونيو',
-      'يوليو',
-      'أغسطس',
-      'سبتمبر',
-      'أكتوبر',
-      'نوفمبر',
-      'ديسمبر',
+      'يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو',
+      'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر',
     ];
 
     final month =
@@ -87,9 +121,11 @@ class _ManageAppointmentsScreenState extends State<ManageAppointmentsScreen> {
     return '${hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')} $period';
   }
 
-  String valueOf(Map<String, dynamic> map, List<String> keys, String fallback) {
+  String valueOf(dynamic source, List<String> keys, String fallback) {
+    if (source is! Map) return fallback;
+
     for (final key in keys) {
-      final value = map[key];
+      final value = source[key];
       if (value != null && value.toString().trim().isNotEmpty) {
         return value.toString();
       }
@@ -98,33 +134,74 @@ class _ManageAppointmentsScreenState extends State<ManageAppointmentsScreen> {
     return fallback;
   }
 
+  String appointmentKey(dynamic appointment) {
+    return valueOf(
+      appointment,
+      ['appointmentId', 'AppointmentId', 'id', 'Id'],
+      '0',
+    );
+  }
+
+  void setLocalStatus(String appointmentId, String status) {
+    final index = appointments.indexWhere(
+          (item) => appointmentKey(item) == appointmentId,
+    );
+
+    if (index == -1) return;
+
+    final current = appointments[index];
+
+    if (current is Map<String, dynamic>) {
+      current['status'] = status;
+      current['Status'] = status;
+    } else if (current is Map) {
+      current['status'] = status;
+      current['Status'] = status;
+    }
+  }
+
   Future<void> updateStatus(
       Map<String, dynamic> appointment,
       String status,
       ) async {
+    final id = appointmentKey(appointment);
+
+    if (updatingIds.contains(id)) return;
+
+    final oldStatus = valueOf(appointment, ['status', 'Status'], 'Pending');
+
+    setState(() {
+      updatingIds.add(id);
+      setLocalStatus(id, status);
+    });
+
     try {
       await ApiService.updateAppointmentStatus(
         appointment: appointment,
         status: status,
-      );
-
-      refreshAppointments();
+      ).timeout(const Duration(seconds: 12));
 
       if (!mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('${AppStrings.appointmentMarkedAs} $status'),
-        ),
+        SnackBar(content: Text('${AppStrings.appointmentMarkedAs} $status')),
       );
-    } catch (e) {
+    } catch (_) {
       if (!mounted) return;
 
+      setState(() {
+        setLocalStatus(id, oldStatus);
+      });
+
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(AppStrings.updateAppointmentFailed),
-        ),
+        SnackBar(content: Text(AppStrings.updateAppointmentFailed)),
       );
+    } finally {
+      if (mounted) {
+        setState(() {
+          updatingIds.remove(id);
+        });
+      }
     }
   }
 
@@ -154,12 +231,244 @@ class _ManageAppointmentsScreenState extends State<ManageAppointmentsScreen> {
     return status;
   }
 
+  String patientNameOf(dynamic appointment) {
+    final direct = valueOf(
+      appointment,
+      ['patientName', 'PatientName', 'userFullName', 'UserFullName'],
+      '',
+    );
+
+    if (direct.isNotEmpty) return direct;
+
+    final patient =
+    appointment is Map ? appointment['patient'] ?? appointment['Patient'] : null;
+
+    final nested = valueOf(
+      patient,
+      ['fullName', 'FullName', 'name', 'Name'],
+      '',
+    );
+
+    if (nested.isNotEmpty) return nested;
+
+    return '${AppStrings.patientId}: ${valueOf(appointment, ['patientId', 'PatientId'], '')}';
+  }
+
+  String doctorNameOf(dynamic appointment) {
+    final direct = valueOf(
+      appointment,
+      ['doctorName', 'DoctorName', 'fullName', 'FullName'],
+      '',
+    );
+
+    if (direct.isNotEmpty) return direct;
+
+    final doctor =
+    appointment is Map ? appointment['doctor'] ?? appointment['Doctor'] : null;
+
+    final nested = valueOf(
+      doctor,
+      ['fullName', 'FullName', 'name', 'Name'],
+      '',
+    );
+
+    if (nested.isNotEmpty) return nested;
+
+    return '${AppStrings.doctorId}: ${valueOf(appointment, ['doctorId', 'DoctorId'], '')}';
+  }
+
+  String specialtyOf(dynamic appointment) {
+    final direct = valueOf(
+      appointment,
+      ['specialtyName', 'SpecialtyName', 'specialty', 'Specialty'],
+      '',
+    );
+
+    if (direct.isNotEmpty) return direct;
+
+    final doctor =
+    appointment is Map ? appointment['doctor'] ?? appointment['Doctor'] : null;
+
+    final specialty = doctor is Map
+        ? doctor['specialtyNavigation'] ??
+        doctor['SpecialtyNavigation'] ??
+        doctor['specialty'] ??
+        doctor['Specialty']
+        : null;
+
+    final nested = valueOf(
+      specialty,
+      ['name', 'Name'],
+      '',
+    );
+
+    if (nested.isNotEmpty) return nested;
+
+    if (specialty is String && specialty.trim().isNotEmpty) return specialty;
+
+    return AppStrings.specialist;
+  }
+
+  Widget centerMessage(String text, {IconData icon = Icons.event_busy}) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 44, color: Colors.grey),
+            const SizedBox(height: 10),
+            Text(
+              text,
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: Colors.grey),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget firstLoadWidget() {
+    return Center(
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(18),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
+            const SizedBox(width: 10),
+            Text(
+              AppStrings.isArabic ? 'تحميل...' : 'Loading...',
+              style: const TextStyle(color: Colors.grey),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget buildBody() {
+    if (!firstLoadDone && appointments.isEmpty) {
+      return firstLoadWidget();
+    }
+
+    if (errorMessage != null && appointments.isEmpty) {
+      return centerMessage(errorMessage!, icon: Icons.error_outline);
+    }
+
+    if (appointments.isEmpty) {
+      return centerMessage(AppStrings.noAppointmentsFound);
+    }
+
+    return Stack(
+      children: [
+        ListView.builder(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.all(16),
+          itemCount: appointments.length,
+          itemBuilder: (context, index) {
+            final appointment = appointments[index];
+
+            final appointmentId = appointmentKey(appointment);
+            final patientName = patientNameOf(appointment);
+            final doctorName = doctorNameOf(appointment);
+            final specialty = specialtyOf(appointment);
+
+            final status = valueOf(
+              appointment,
+              ['status', 'Status'],
+              'Pending',
+            );
+
+            final dateValue = valueOf(
+              appointment,
+              ['appointmentDate', 'AppointmentDate'],
+              '',
+            );
+
+            return AppointmentAdminCard(
+              appointmentId: appointmentId,
+              patientName: patientName,
+              doctorName: doctorName,
+              specialty: specialty,
+              statusText: statusByLanguage(status),
+              statusColor: statusColor(status),
+              date: formatDate(dateValue),
+              time: formatTime(dateValue),
+              isUpdating: updatingIds.contains(appointmentId),
+              onConfirm: () {
+                if (appointment is Map<String, dynamic>) {
+                  updateStatus(appointment, 'Confirmed');
+                }
+              },
+              onComplete: () {
+                if (appointment is Map<String, dynamic>) {
+                  updateStatus(appointment, 'Completed');
+                }
+              },
+              onCancel: () {
+                if (appointment is Map<String, dynamic>) {
+                  updateStatus(appointment, 'Cancelled');
+                }
+              },
+            );
+          },
+        ),
+        if (isRefreshing)
+          Positioned(
+            top: 8,
+            right: 0,
+            left: 0,
+            child: Center(
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(18),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(.05),
+                      blurRadius: 8,
+                    ),
+                  ],
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const SizedBox(
+                      width: 14,
+                      height: 14,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      AppStrings.isArabic ? 'تحديث...' : 'Updating...',
+                      style: const TextStyle(fontSize: 11),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Directionality(
       textDirection: AppStrings.isArabic ? TextDirection.rtl : TextDirection.ltr,
       child: Scaffold(
-        backgroundColor: const Color(0xffF7F8FC),
+        backgroundColor: background,
         appBar: AppBar(
           title: Text(AppStrings.manageAppointments),
           backgroundColor: Colors.white,
@@ -168,95 +477,11 @@ class _ManageAppointmentsScreenState extends State<ManageAppointmentsScreen> {
           actions: [
             IconButton(
               icon: const Icon(Icons.refresh),
-              onPressed: refreshAppointments,
+              onPressed: isRefreshing ? null : refreshAppointments,
             ),
           ],
         ),
-        body: FutureBuilder<List<dynamic>>(
-          future: appointmentsFuture,
-          builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting) {
-              return const Center(
-                child: CircularProgressIndicator(),
-              );
-            }
-
-            if (snapshot.hasError) {
-              return Center(
-                child: Text(
-                  AppStrings.failedLoadAppointments,
-                  style: const TextStyle(color: Colors.red),
-                ),
-              );
-            }
-
-            final appointments = snapshot.data ?? [];
-
-            if (appointments.isEmpty) {
-              return Center(
-                child: Text(AppStrings.noAppointmentsFound),
-              );
-            }
-
-            return ListView.builder(
-              padding: const EdgeInsets.all(16),
-              itemCount: appointments.length,
-              itemBuilder: (context, index) {
-                final appointment = appointments[index];
-
-                final appointmentId = valueOf(
-                  appointment,
-                  ['appointmentId', 'AppointmentId'],
-                  '0',
-                );
-
-                final patientName = valueOf(
-                  appointment,
-                  ['patientName', 'PatientName'],
-                  '${AppStrings.patientId}: ${valueOf(appointment, ['patientId', 'PatientId'], '')}',
-                );
-
-                final doctorName = valueOf(
-                  appointment,
-                  ['doctorName', 'DoctorName'],
-                  '${AppStrings.doctorId}: ${valueOf(appointment, ['doctorId', 'DoctorId'], '')}',
-                );
-
-                final specialty = valueOf(
-                  appointment,
-                  ['specialtyName', 'SpecialtyName', 'specialty', 'Specialty'],
-                  AppStrings.specialist,
-                );
-
-                final status = valueOf(
-                  appointment,
-                  ['status', 'Status'],
-                  'Pending',
-                );
-
-                final dateValue = valueOf(
-                  appointment,
-                  ['appointmentDate', 'AppointmentDate'],
-                  '',
-                );
-
-                return AppointmentAdminCard(
-                  appointmentId: appointmentId,
-                  patientName: patientName,
-                  doctorName: doctorName,
-                  specialty: specialty,
-                  statusText: statusByLanguage(status),
-                  statusColor: statusColor(status),
-                  date: formatDate(dateValue),
-                  time: formatTime(dateValue),
-                  onConfirm: () => updateStatus(appointment, 'Confirmed'),
-                  onComplete: () => updateStatus(appointment, 'Completed'),
-                  onCancel: () => updateStatus(appointment, 'Cancelled'),
-                );
-              },
-            );
-          },
-        ),
+        body: buildBody(),
       ),
     );
   }
@@ -271,6 +496,7 @@ class AppointmentAdminCard extends StatelessWidget {
   final Color statusColor;
   final String date;
   final String time;
+  final bool isUpdating;
   final VoidCallback onConfirm;
   final VoidCallback onComplete;
   final VoidCallback onCancel;
@@ -285,6 +511,7 @@ class AppointmentAdminCard extends StatelessWidget {
     required this.statusColor,
     required this.date,
     required this.time,
+    required this.isUpdating,
     required this.onConfirm,
     required this.onComplete,
     required this.onCancel,
@@ -359,6 +586,12 @@ class AppointmentAdminCard extends StatelessWidget {
               infoChip(Icons.calendar_month, date),
               infoChip(Icons.access_time, time),
               statusChip(),
+              if (isUpdating)
+                const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
             ],
           ),
           const SizedBox(height: 14),
@@ -369,17 +602,17 @@ class AppointmentAdminCard extends StatelessWidget {
               statusButton(
                 title: AppStrings.confirm,
                 color: Colors.green,
-                onTap: onConfirm,
+                onTap: isUpdating ? null : onConfirm,
               ),
               statusButton(
                 title: AppStrings.complete,
                 color: Colors.blue,
-                onTap: onComplete,
+                onTap: isUpdating ? null : onComplete,
               ),
               statusButton(
                 title: AppStrings.cancelAppointment,
                 color: Colors.red,
-                onTap: onCancel,
+                onTap: isUpdating ? null : onCancel,
               ),
             ],
           ),
@@ -458,7 +691,7 @@ class AppointmentAdminCard extends StatelessWidget {
   Widget statusButton({
     required String title,
     required Color color,
-    required VoidCallback onTap,
+    required VoidCallback? onTap,
   }) {
     return SizedBox(
       height: 42,
@@ -466,6 +699,7 @@ class AppointmentAdminCard extends StatelessWidget {
         style: ElevatedButton.styleFrom(
           backgroundColor: color,
           foregroundColor: Colors.white,
+          disabledBackgroundColor: color.withOpacity(.45),
           minimumSize: const Size(95, 42),
           padding: const EdgeInsets.symmetric(horizontal: 14),
           shape: RoundedRectangleBorder(

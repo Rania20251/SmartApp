@@ -1,7 +1,9 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import '../language/app_strings.dart';
 import '../services/api_service.dart';
 import '../services/user_session.dart';
@@ -19,6 +21,19 @@ class _HomeScreenState extends State<HomeScreen> {
   String searchText = '';
   int? selectedSpecialtyId;
   final ScrollController specialtiesScrollController = ScrollController();
+  final PageController bannerController = PageController();
+
+  int currentBannerIndex = 0;
+  final ValueNotifier<int> bannerIndexNotifier = ValueNotifier<int>(0);
+  Timer? bannerTimer;
+  List<String> bannerImages = [];
+
+  static const String bannersKey = 'home_banner_images';
+
+  bool get isAdmin {
+    final role = UserSession.role?.trim().toLowerCase() ?? '';
+    return role == 'admin';
+  }
 
   late Future<List<dynamic>> doctorsFuture;
   late Future<List<dynamic>> specialtiesFuture;
@@ -28,14 +43,395 @@ class _HomeScreenState extends State<HomeScreen> {
     super.initState();
     doctorsFuture = ApiService.getDoctors();
     specialtiesFuture = ApiService.getSpecialties();
+    loadBanners();
   }
 
   @override
   void dispose() {
+    bannerTimer?.cancel();
+    bannerController.dispose();
+    bannerIndexNotifier.dispose();
     searchController.dispose();
     specialtiesScrollController.dispose();
     super.dispose();
   }
+
+
+  Future<void> loadBanners() async {
+    try {
+      final data = await ApiService.getBanners(forceRefresh: true);
+
+      final fixed = List<String>.filled(3, '');
+
+      for (final banner in data) {
+        if (banner is Map) {
+          final position = int.tryParse(
+            banner['position']?.toString() ??
+                banner['Position']?.toString() ??
+                '0',
+          ) ??
+              0;
+
+          final image = banner['imageUrl']?.toString() ??
+              banner['ImageUrl']?.toString() ??
+              '';
+
+          if (position >= 0 && position < 3 && image.trim().isNotEmpty) {
+            fixed[position] = ApiService.fixImageUrl(image);
+          }
+        }
+      }
+
+      if (!mounted) return;
+
+      setState(() {
+        bannerImages = fixed;
+        currentBannerIndex = 0;
+        bannerIndexNotifier.value = 0;
+      });
+
+      startBannerTimer();
+    } catch (_) {
+      if (!mounted) return;
+
+      setState(() {
+        bannerImages = List<String>.filled(3, '');
+        currentBannerIndex = 0;
+        bannerIndexNotifier.value = 0;
+      });
+    }
+  }
+
+  Future<void> saveBanners() async {
+    await loadBanners();
+  }
+
+  List<String> get activeBannerImages {
+    return bannerImages.where((e) => e.trim().isNotEmpty).toList();
+  }
+
+  void startBannerTimer() {
+    bannerTimer?.cancel();
+
+    bannerTimer = Timer.periodic(const Duration(seconds: 4), (_) {
+      final images = activeBannerImages;
+
+      if (!mounted || images.length < 2 || !bannerController.hasClients) {
+        return;
+      }
+
+      final nextIndex = (currentBannerIndex + 1) % images.length;
+
+      bannerController.animateToPage(
+        nextIndex,
+        duration: const Duration(milliseconds: 450),
+        curve: Curves.easeInOut,
+      );
+    });
+  }
+
+  Future<void> pickBannerImage(int index) async {
+    final picker = ImagePicker();
+
+    final picked = await picker.pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 75,
+      maxWidth: 1200,
+    );
+
+    if (picked == null) return;
+
+    final bytes = await picked.readAsBytes();
+
+    await ApiService.uploadBannerImageBytes(
+      bytes: bytes,
+      fileName: picked.name.isNotEmpty ? picked.name : 'banner.jpg',
+      position: index,
+    );
+
+    await loadBanners();
+
+    if (!mounted) return;
+
+    if (bannerController.hasClients) {
+      bannerController.jumpToPage(0);
+    }
+
+    startBannerTimer();
+  }
+
+  Future<void> deleteBannerImage(int index) async {
+    await ApiService.deleteBannerImage(index);
+    await loadBanners();
+
+    if (!mounted) return;
+
+    if (bannerController.hasClients) {
+      bannerController.jumpToPage(0);
+    }
+
+    startBannerTimer();
+  }
+
+  Future<void> openBannerManager() async {
+    if (!isAdmin) return;
+
+    await showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setSheetState) {
+            return Padding(
+              padding: const EdgeInsets.all(18),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: AppStrings.isArabic
+                    ? CrossAxisAlignment.end
+                    : CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    AppStrings.isArabic
+                        ? 'إدارة صور البنر'
+                        : 'Manage Banner Images',
+                    style: const TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  for (int i = 0; i < 3; i++)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 10),
+                      child: Row(
+                        children: [
+                          CircleAvatar(
+                            radius: 24,
+                            backgroundColor: const Color(0xffEDE7FF),
+                            backgroundImage:
+                            i < bannerImages.length && bannerImages[i].trim().isNotEmpty
+                                ? bannerImageProvider(bannerImages[i])
+                                : null,
+                            child:
+                            i >= bannerImages.length || bannerImages[i].trim().isEmpty
+                                ? const Icon(
+                              Icons.image,
+                              color: Color(0xff5B2EFF),
+                            )
+                                : null,
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              AppStrings.isArabic
+                                  ? 'صورة البنر ${i + 1}'
+                                  : 'Banner Image ${i + 1}',
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                          IconButton(
+                            onPressed: () async {
+                              await pickBannerImage(i);
+                              setSheetState(() {});
+                            },
+                            icon: const Icon(
+                              Icons.upload_file,
+                              color: Color(0xff5B2EFF),
+                            ),
+                          ),
+                          if (i < bannerImages.length && bannerImages[i].trim().isNotEmpty)
+                            IconButton(
+                              onPressed: () async {
+                                await deleteBannerImage(i);
+                                setSheetState(() {});
+                              },
+                              icon: const Icon(
+                                Icons.delete,
+                                color: Colors.red,
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  const SizedBox(height: 6),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 46,
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xff5B2EFF),
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                      ),
+                      onPressed: () => Navigator.pop(context),
+                      child: Text(AppStrings.isArabic ? 'تم' : 'Done'),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  ImageProvider? bannerImageProvider(String image) {
+    final value = image.trim();
+
+    try {
+      if (value.startsWith('data:image')) {
+        return MemoryImage(base64Decode(value.split(',').last));
+      }
+
+      if (value.startsWith('http://') || value.startsWith('https://')) {
+        return NetworkImage(value);
+      }
+
+      if (value.startsWith('assets/')) {
+        return AssetImage(value);
+      }
+    } catch (_) {}
+
+    return null;
+  }
+
+  Widget buildHomeBanner() {
+    const primary = Color(0xff5B2EFF);
+    final images = activeBannerImages;
+    final hasImages = images.isNotEmpty;
+
+    return Stack(
+      children: [
+        ClipRRect(
+          borderRadius: BorderRadius.circular(26),
+          child: SizedBox(
+            height: 190,
+            width: double.infinity,
+            child: hasImages
+                ? PageView.builder(
+              controller: bannerController,
+              itemCount: images.length,
+              onPageChanged: (index) {
+                currentBannerIndex = index;
+                bannerIndexNotifier.value = index;
+              },
+              itemBuilder: (context, index) {
+                final provider = bannerImageProvider(images[index]);
+
+                if (provider == null) return defaultBanner();
+
+                return Image(
+                  image: provider,
+                  fit: BoxFit.cover,
+                  width: double.infinity,
+                  height: 190,
+                  gaplessPlayback: true,
+                  filterQuality: FilterQuality.medium,
+                );
+              },
+            )
+                : defaultBanner(),
+          ),
+        ),
+        if (hasImages)
+          Positioned(
+            bottom: 12,
+            left: 0,
+            right: 0,
+            child: ValueListenableBuilder<int>(
+              valueListenable: bannerIndexNotifier,
+              builder: (context, bannerIndex, _) {
+                return Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: List.generate(images.length, (index) {
+                    final selected = bannerIndex == index;
+
+                    return AnimatedContainer(
+                      duration: const Duration(milliseconds: 200),
+                      width: selected ? 18 : 7,
+                      height: 7,
+                      margin: const EdgeInsets.symmetric(horizontal: 3),
+                      decoration: BoxDecoration(
+                        color: selected ? Colors.white : Colors.white70,
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                    );
+                  }),
+                );
+              },
+            ),
+          ),
+        if (isAdmin)
+          Positioned(
+            top: 10,
+            right: AppStrings.isArabic ? null : 10,
+            left: AppStrings.isArabic ? 10 : null,
+            child: InkWell(
+              borderRadius: BorderRadius.circular(14),
+              onTap: openBannerManager,
+              child: Container(
+                padding: const EdgeInsets.all(9),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(.90),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: const Icon(
+                  Icons.edit,
+                  color: primary,
+                  size: 20,
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget defaultBanner() {
+    return Container(
+      padding: const EdgeInsets.all(22),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xff6A3CFF), Color(0xff4D1FFF)],
+        ),
+        borderRadius: BorderRadius.circular(26),
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment:
+        AppStrings.isArabic ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+        children: [
+          Text(
+            AppStrings.needConsultation,
+            textAlign: AppStrings.isArabic ? TextAlign.right : TextAlign.left,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 26,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 10),
+          Text(
+            AppStrings.bookAppointmentMessage,
+            textAlign: AppStrings.isArabic ? TextAlign.right : TextAlign.left,
+            style: const TextStyle(
+              color: Colors.white70,
+              fontSize: 15,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
 
   ImageProvider getUserImage() {
     final image = UserSession.profileImage ?? '';
@@ -207,44 +603,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     ],
                   ),
                   const SizedBox(height: 24),
-                  Container(
-                    padding: const EdgeInsets.all(22),
-                    decoration: BoxDecoration(
-                      gradient: const LinearGradient(
-                        colors: [Color(0xff6A3CFF), Color(0xff4D1FFF)],
-                      ),
-                      borderRadius: BorderRadius.circular(26),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: AppStrings.isArabic
-                          ? CrossAxisAlignment.end
-                          : CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          AppStrings.needConsultation,
-                          textAlign: AppStrings.isArabic
-                              ? TextAlign.right
-                              : TextAlign.left,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 26,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        const SizedBox(height: 10),
-                        Text(
-                          AppStrings.bookAppointmentMessage,
-                          textAlign: AppStrings.isArabic
-                              ? TextAlign.right
-                              : TextAlign.left,
-                          style: const TextStyle(
-                            color: Colors.white70,
-                            fontSize: 15,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
+                  buildHomeBanner(),
                   const SizedBox(height: 20),
                   TextField(
                     controller: searchController,
