@@ -17,16 +17,12 @@ class _ManageUsersScreenState extends State<ManageUsersScreen> {
   @override
   void initState() {
     super.initState();
-    loadUsers();
-  }
-
-  void loadUsers() {
     usersFuture = ApiService.getPatients();
   }
 
   void refreshUsers() {
     setState(() {
-      loadUsers();
+      usersFuture = ApiService.getPatients();
     });
   }
 
@@ -42,26 +38,32 @@ class _ManageUsersScreenState extends State<ManageUsersScreen> {
     return 'assets/images/profile.jpg';
   }
 
+  Widget defaultUserImage() {
+    const primary = Color(0xff5B2EFF);
+    return const CircleAvatar(
+      radius: 30,
+      backgroundColor: Color(0xffEDE7FF),
+      child: Icon(Icons.person, color: primary),
+    );
+  }
+
   Widget userImage(String imagePath) {
     final image = imagePath.trim();
 
     if (image.startsWith('data:image')) {
       try {
-        final base64Part = image.split(',').last;
         return ClipOval(
           child: Image.memory(
-            base64Decode(base64Part),
+            base64Decode(image.split(',').last),
             width: 60,
             height: 60,
             fit: BoxFit.cover,
           ),
         );
-      } catch (_) {
-        return defaultUserImage();
-      }
+      } catch (_) {}
     }
 
-    if (image.startsWith('http://') || image.startsWith('https://')) {
+    if (image.startsWith('http')) {
       return ClipOval(
         child: Image.network(
           image,
@@ -88,62 +90,31 @@ class _ManageUsersScreenState extends State<ManageUsersScreen> {
     return defaultUserImage();
   }
 
-  Widget defaultUserImage() {
-    const primary = Color(0xff5B2EFF);
-
-    return const CircleAvatar(
-      radius: 30,
-      backgroundColor: Color(0xffEDE7FF),
-      child: Icon(
-        Icons.person,
-        color: primary,
-      ),
-    );
-  }
-
   Future<void> deleteUser(int userId) async {
-    await ApiService.deleteUser(userId);
-
-    refreshUsers();
-
-    if (!mounted) return;
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(AppStrings.userDeleted),
-      ),
-    );
+    try {
+      await ApiService.deleteUser(userId);
+      if (!mounted) return;
+      refreshUsers();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(AppStrings.userDeleted)),
+      );
+    } catch (_) {}
   }
 
   Future<void> confirmDelete(int userId) async {
-    final confirm = await showDialog<bool>(
+    final ok = await showDialog<bool>(
       context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: Text(AppStrings.deleteUser),
-          content: Text(AppStrings.deleteUserConfirm),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.pop(context, false);
-              },
-              child: Text(AppStrings.cancel),
-            ),
-            TextButton(
-              onPressed: () {
-                Navigator.pop(context, true);
-              },
-              child: Text(
-                AppStrings.delete,
-                style: const TextStyle(color: Colors.red),
-              ),
-            ),
-          ],
-        );
-      },
+      builder: (_) => AlertDialog(
+        title: Text(AppStrings.deleteUser),
+        content: Text(AppStrings.deleteUserConfirm),
+        actions: [
+          TextButton(onPressed: ()=>Navigator.pop(context,false), child: Text(AppStrings.cancel)),
+          TextButton(onPressed: ()=>Navigator.pop(context,true), child: Text(AppStrings.delete,style: const TextStyle(color: Colors.red))),
+        ],
+      ),
     );
 
-    if (confirm == true) {
+    if (ok == true) {
       await deleteUser(userId);
     }
   }
@@ -160,134 +131,54 @@ class _ManageUsersScreenState extends State<ManageUsersScreen> {
           foregroundColor: Colors.black,
           elevation: 0,
           actions: [
-            IconButton(
-              icon: const Icon(Icons.refresh),
-              onPressed: refreshUsers,
-            ),
+            IconButton(icon: const Icon(Icons.refresh), onPressed: refreshUsers),
           ],
         ),
         body: FutureBuilder<List<dynamic>>(
           future: usersFuture,
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
-              return const Center(
-                child: CircularProgressIndicator(),
-              );
+              return const Center(child: CircularProgressIndicator());
             }
-
             if (snapshot.hasError) {
-              return Center(
-                child: Text(
-                  AppStrings.failedLoadUsers,
-                  style: const TextStyle(color: Colors.red),
-                ),
-              );
+              return Center(child: Text(AppStrings.failedLoadUsers, style: const TextStyle(color: Colors.red)));
             }
-
             final users = snapshot.data ?? [];
-
             if (users.isEmpty) {
-              return Center(
-                child: Text(AppStrings.noUsersFound),
-              );
+              return Center(child: Text(AppStrings.noUsersFound));
             }
-
             return ListView.builder(
               padding: const EdgeInsets.all(18),
               itemCount: users.length,
-              itemBuilder: (context, index) {
-                final user = users[index];
-
-                final userId = int.tryParse(
-                  user['userId']?.toString() ??
-                      user['UserId']?.toString() ??
-                      '0',
-                ) ??
-                    0;
-
-                final fullName = user['fullName']?.toString() ??
-                    user['FullName']?.toString() ??
-                    AppStrings.noName;
-
-                final email = user['email']?.toString() ??
-                    user['Email']?.toString() ??
-                    AppStrings.noEmail;
-
-                final phone = user['phoneNumber']?.toString() ??
-                    user['PhoneNumber']?.toString() ??
-                    '';
-
-                final imagePath = getUserImage(user);
-
+              itemBuilder: (context,index){
+                final user=users[index];
+                final id=int.tryParse('${user['userId']??user['UserId']??0}')??0;
+                final full='${user['fullName']??user['FullName']??AppStrings.noName}';
+                final email='${user['email']??user['Email']??AppStrings.noEmail}';
+                final phone='${user['phoneNumber']??user['PhoneNumber']??''}';
                 return Container(
-                  margin: const EdgeInsets.only(bottom: 16),
+                  margin: const EdgeInsets.only(bottom:16),
                   padding: const EdgeInsets.all(18),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(22),
-                  ),
-                  child: Row(
-                    children: [
-                      SizedBox(
-                        width: 60,
-                        height: 60,
-                        child: userImage(imagePath),
-                      ),
-                      const SizedBox(width: 14),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: AppStrings.isArabic
-                              ? CrossAxisAlignment.end
-                              : CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              fullName,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                fontSize: 17,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              email,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                color: Colors.grey,
-                              ),
-                            ),
-                            if (phone.isNotEmpty) ...[
-                              const SizedBox(height: 4),
-                              Text(
-                                phone,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(fontSize: 12),
-                              ),
-                            ],
-                            const SizedBox(height: 4),
-                            Text(
-                              '${AppStrings.userId}: $userId',
-                              style: const TextStyle(
-                                fontSize: 12,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      IconButton(
-                        icon: const Icon(
-                          Icons.delete,
-                          color: Colors.red,
-                        ),
-                        onPressed: () {
-                          confirmDelete(userId);
-                        },
-                      ),
-                    ],
-                  ),
+                  decoration: BoxDecoration(color: Colors.white,borderRadius: BorderRadius.circular(22)),
+                  child: Row(children:[
+                    SizedBox(width:60,height:60,child:userImage(getUserImage(user))),
+                    const SizedBox(width:14),
+                    Expanded(child:Column(
+                      crossAxisAlignment: AppStrings.isArabic?CrossAxisAlignment.end:CrossAxisAlignment.start,
+                      children:[
+                        Text(full,maxLines:1,overflow:TextOverflow.ellipsis,style: const TextStyle(fontSize:17,fontWeight:FontWeight.bold)),
+                        const SizedBox(height:4),
+                        Text(email,maxLines:1,overflow:TextOverflow.ellipsis,style: const TextStyle(color: Colors.grey)),
+                        if(phone.isNotEmpty)...[
+                          const SizedBox(height:4),
+                          Text(phone,style: const TextStyle(fontSize:12))
+                        ],
+                        const SizedBox(height:4),
+                        Text('${AppStrings.userId}: $id',style: const TextStyle(fontSize:12))
+                      ],
+                    )),
+                    IconButton(icon: const Icon(Icons.delete,color: Colors.red),onPressed: ()=>confirmDelete(id))
+                  ]),
                 );
               },
             );

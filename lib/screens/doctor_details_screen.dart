@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -30,45 +31,66 @@ class DoctorDetailsScreen extends StatefulWidget {
 }
 
 class _DoctorDetailsScreenState extends State<DoctorDetailsScreen> {
+  static const Color primary = Color(0xff5B2EFF);
+  static const List<String> times = ['09:00 AM', '10:30 AM', '12:00 PM'];
+
   int selectedDay = 1;
   int selectedTime = 1;
   bool isFavorite = false;
   bool isBooked = false;
 
-  final List<String> times = ['09:00 AM', '10:30 AM', '12:00 PM'];
+  late final List<DateTime> dates;
+  late final String shownName;
+  late final String shownSpecialty;
+  late final String safeImage;
+  late final String aboutText;
+  Uint8List? imageBytes;
+
+  SharedPreferences? prefs;
 
   @override
   void initState() {
     super.initState();
+
+    final today = DateTime.now();
+    dates = List.generate(5, (index) {
+      final date = today.add(Duration(days: index + 1));
+      return DateTime(date.year, date.month, date.day);
+    });
+
+    shownName = translateDoctorName(widget.name);
+    shownSpecialty = translateSpecialty(widget.specialty);
+    safeImage = getSafeImagePath(widget.imagePath);
+    aboutText = aboutDoctor();
+
+    if (safeImage.startsWith('data:image')) {
+      try {
+        imageBytes = base64Decode(safeImage.split(',').last);
+      } catch (_) {
+        imageBytes = null;
+      }
+    }
+
     loadFavorite();
   }
 
   String get favoriteKey =>
       'favorite_doctor_${UserSession.userId ?? 0}_${widget.doctorId}';
 
-  List<DateTime> get availableDates {
-    final today = DateTime.now();
-    return List.generate(5, (index) {
-      final date = today.add(Duration(days: index + 1));
-      return DateTime(date.year, date.month, date.day);
-    });
-  }
-
   Future<void> loadFavorite() async {
-    final prefs = await SharedPreferences.getInstance();
-
+    prefs = await SharedPreferences.getInstance();
     if (!mounted) return;
 
     setState(() {
-      isFavorite = prefs.getBool(favoriteKey) ?? false;
+      isFavorite = prefs?.getBool(favoriteKey) ?? false;
     });
   }
 
   Future<void> toggleFavorite() async {
-    final prefs = await SharedPreferences.getInstance();
-    final newValue = !isFavorite;
+    prefs ??= await SharedPreferences.getInstance();
 
-    await prefs.setBool(favoriteKey, newValue);
+    final newValue = !isFavorite;
+    await prefs!.setBool(favoriteKey, newValue);
 
     if (!mounted) return;
 
@@ -91,8 +113,8 @@ class _DoctorDetailsScreenState extends State<DoctorDetailsScreen> {
     );
   }
 
-  String get safeImagePath {
-    final image = widget.imagePath.trim();
+  String getSafeImagePath(String path) {
+    final image = path.trim();
 
     if (image.isEmpty || image == 'string') {
       return 'assets/images/profile.jpg';
@@ -181,8 +203,8 @@ class _DoctorDetailsScreenState extends State<DoctorDetailsScreen> {
   }
 
   String dayName(DateTime date) {
-    final daysEn = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-    final daysAr = [
+    const daysEn = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    const daysAr = [
       'الإثنين',
       'الثلاثاء',
       'الأربعاء',
@@ -192,11 +214,13 @@ class _DoctorDetailsScreenState extends State<DoctorDetailsScreen> {
       'الأحد'
     ];
 
-    return AppStrings.isArabic ? daysAr[date.weekday - 1] : daysEn[date.weekday - 1];
+    return AppStrings.isArabic
+        ? daysAr[date.weekday - 1]
+        : daysEn[date.weekday - 1];
   }
 
   DateTime selectedAppointmentDateTime() {
-    final date = availableDates[selectedDay];
+    final date = dates[selectedDay];
     final selectedTimeText = times[selectedTime];
 
     final parts = selectedTimeText.split(' ');
@@ -213,41 +237,35 @@ class _DoctorDetailsScreenState extends State<DoctorDetailsScreen> {
   }
 
   Widget doctorImage() {
-    final image = safeImagePath;
-
-    if (image.startsWith('data:image')) {
-      try {
-        final base64Part = image.split(',').last;
-
-        return ClipOval(
-          child: Image.memory(
-            base64Decode(base64Part),
-            width: 96,
-            height: 96,
-            fit: BoxFit.cover,
-          ),
-        );
-      } catch (_) {
-        return defaultDoctorImage();
-      }
-    }
-
-    if (image.startsWith('http://') || image.startsWith('https://')) {
+    if (imageBytes != null) {
       return ClipOval(
-        child: Image.network(
-          image,
+        child: Image.memory(
+          imageBytes!,
           width: 96,
           height: 96,
           fit: BoxFit.cover,
+          gaplessPlayback: true,
+        ),
+      );
+    }
+
+    if (safeImage.startsWith('http://') || safeImage.startsWith('https://')) {
+      return ClipOval(
+        child: Image.network(
+          safeImage,
+          width: 96,
+          height: 96,
+          fit: BoxFit.cover,
+          gaplessPlayback: true,
           errorBuilder: (_, __, ___) => defaultDoctorImage(),
         ),
       );
     }
 
-    if (image.startsWith('assets/')) {
+    if (safeImage.startsWith('assets/')) {
       return ClipOval(
         child: Image.asset(
-          image,
+          safeImage,
           width: 96,
           height: 96,
           fit: BoxFit.cover,
@@ -299,7 +317,7 @@ class _DoctorDetailsScreenState extends State<DoctorDetailsScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(AppStrings.appointmentBooked)),
       );
-    } catch (e) {
+    } catch (_) {
       if (!mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
@@ -310,12 +328,6 @@ class _DoctorDetailsScreenState extends State<DoctorDetailsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    const primary = Color(0xff5B2EFF);
-
-    final shownName = translateDoctorName(widget.name);
-    final shownSpecialty = translateSpecialty(widget.specialty);
-    final dates = availableDates;
-
     return Directionality(
       textDirection: AppStrings.isArabic ? TextDirection.rtl : TextDirection.ltr,
       child: Scaffold(
@@ -391,12 +403,19 @@ class _DoctorDetailsScreenState extends State<DoctorDetailsScreen> {
                               ? MainAxisAlignment.end
                               : MainAxisAlignment.start,
                           children: [
-                            const Icon(Icons.star, color: Colors.orange, size: 18),
+                            const Icon(
+                              Icons.star,
+                              color: Colors.orange,
+                              size: 18,
+                            ),
                             Text(' ${widget.rating}'),
                             const SizedBox(width: 6),
                             Text(
                               AppStrings.isArabic ? '(120 تقييم)' : '(120 reviews)',
-                              style: const TextStyle(color: Colors.grey, fontSize: 12),
+                              style: const TextStyle(
+                                color: Colors.grey,
+                                fontSize: 12,
+                              ),
                             ),
                           ],
                         ),
@@ -440,7 +459,7 @@ class _DoctorDetailsScreenState extends State<DoctorDetailsScreen> {
             ),
             const SizedBox(height: 10),
             Text(
-              aboutDoctor(),
+              aboutText,
               style: const TextStyle(
                 color: Colors.grey,
                 height: 1.6,
@@ -461,10 +480,14 @@ class _DoctorDetailsScreenState extends State<DoctorDetailsScreen> {
 
                 return InkWell(
                   borderRadius: BorderRadius.circular(18),
-                  onTap: () => setState(() {
-                    selectedDay = index;
-                    isBooked = false;
-                  }),
+                  onTap: () {
+                    if (selectedDay == index && !isBooked) return;
+
+                    setState(() {
+                      selectedDay = index;
+                      isBooked = false;
+                    });
+                  },
                   child: Container(
                     width: 58,
                     padding: const EdgeInsets.symmetric(vertical: 12),
@@ -505,10 +528,14 @@ class _DoctorDetailsScreenState extends State<DoctorDetailsScreen> {
 
                 return InkWell(
                   borderRadius: BorderRadius.circular(14),
-                  onTap: () => setState(() {
-                    selectedTime = index;
-                    isBooked = false;
-                  }),
+                  onTap: () {
+                    if (selectedTime == index && !isBooked) return;
+
+                    setState(() {
+                      selectedTime = index;
+                      isBooked = false;
+                    });
+                  },
                   child: Container(
                     width: 100,
                     height: 44,
@@ -521,7 +548,8 @@ class _DoctorDetailsScreenState extends State<DoctorDetailsScreen> {
                       times[index],
                       style: TextStyle(
                         color: selected ? Colors.white : Colors.black,
-                        fontWeight: selected ? FontWeight.bold : FontWeight.normal,
+                        fontWeight:
+                        selected ? FontWeight.bold : FontWeight.normal,
                         fontSize: 13,
                       ),
                     ),

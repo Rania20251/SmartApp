@@ -18,12 +18,14 @@ class _DoctorsScreenState extends State<DoctorsScreen> {
 
   late Future<List<dynamic>> doctorsFuture;
   late Future<List<dynamic>> specialtiesFuture;
+  late Future<List<List<dynamic>>> doctorsDataFuture;
 
   @override
   void initState() {
     super.initState();
     doctorsFuture = ApiService.getDoctors();
     specialtiesFuture = ApiService.getSpecialties();
+    doctorsDataFuture = Future.wait([doctorsFuture, specialtiesFuture]);
   }
 
   @override
@@ -451,7 +453,7 @@ class _DoctorsScreenState extends State<DoctorsScreen> {
                 const SizedBox(height: 18),
                 Expanded(
                   child: FutureBuilder<List<List<dynamic>>>(
-                    future: Future.wait([doctorsFuture, specialtiesFuture]),
+                    future: doctorsDataFuture,
                     builder: (context, snapshot) {
                       if (snapshot.connectionState == ConnectionState.waiting) {
                         return const Center(child: CircularProgressIndicator());

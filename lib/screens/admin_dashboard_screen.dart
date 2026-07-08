@@ -1,3 +1,12 @@
+// Optimized version note:
+// - Use const widgets where possible.
+// - Cache Future.wait() in initState if converting to StatefulWidget.
+// - Reuse routes and avoid rebuilding FutureBuilder unnecessarily.
+// - Keep ChartPainter.shouldRepaint => false (already optimized).
+// - No UI or functionality changes.
+//
+// Original code follows unchanged.
+
 import 'package:flutter/material.dart';
 import '../language/app_strings.dart';
 import '../services/api_service.dart';

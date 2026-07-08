@@ -14,6 +14,10 @@ class AddDoctorScreen extends StatefulWidget {
 }
 
 class _AddDoctorScreenState extends State<AddDoctorScreen> {
+  static const Color primary = Color(0xff5B2EFF);
+  static const Color background = Color(0xffF7F8FC);
+  static const Color lightPurple = Color(0xffEDE7FF);
+
   final nameController = TextEditingController();
   final phoneController = TextEditingController();
   final emailController = TextEditingController();
@@ -46,22 +50,27 @@ class _AddDoctorScreenState extends State<AddDoctorScreen> {
         specialties = data;
         isLoadingSpecialties = false;
       });
-    } catch (e) {
+    } catch (_) {
       if (!mounted) return;
 
-      setState(() => isLoadingSpecialties = false);
+      setState(() {
+        isLoadingSpecialties = false;
+      });
+
       showMessage(AppStrings.enterSpecialty);
     }
   }
 
   void showMessage(String message) {
+    if (!mounted) return;
+
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(message)),
     );
   }
 
   Future<void> pickDoctorImage() async {
-    final XFile? picked = await picker.pickImage(
+    final picked = await picker.pickImage(
       source: ImageSource.gallery,
       imageQuality: 80,
     );
@@ -70,6 +79,8 @@ class _AddDoctorScreenState extends State<AddDoctorScreen> {
 
     final bytes = await picked.readAsBytes();
 
+    if (!mounted) return;
+
     setState(() {
       selectedImageBytes = bytes;
       selectedImageName = picked.name.isNotEmpty ? picked.name : 'doctor.jpg';
@@ -77,16 +88,22 @@ class _AddDoctorScreenState extends State<AddDoctorScreen> {
   }
 
   Future<String> uploadSelectedImageIfNeeded() async {
-    if (selectedImageBytes == null) return '';
+    final bytes = selectedImageBytes;
 
-    return await ApiService.uploadDoctorImageBytes(
-      bytes: selectedImageBytes!,
+    if (bytes == null) return '';
+
+    return ApiService.uploadDoctorImageBytes(
+      bytes: bytes,
       fileName: selectedImageName.isEmpty ? 'doctor.jpg' : selectedImageName,
     );
   }
 
   Future<void> addDoctor() async {
-    if (nameController.text.trim().isEmpty) {
+    final name = nameController.text.trim();
+    final phone = phoneController.text.trim();
+    final email = emailController.text.trim();
+
+    if (name.isEmpty) {
       showMessage(AppStrings.enterDoctorName);
       return;
     }
@@ -96,16 +113,20 @@ class _AddDoctorScreenState extends State<AddDoctorScreen> {
       return;
     }
 
-    setState(() => isLoading = true);
+    if (isLoading) return;
+
+    setState(() {
+      isLoading = true;
+    });
 
     try {
       final uploadedImageUrl = await uploadSelectedImageIfNeeded();
 
       await ApiService.createDoctor(
-        fullName: nameController.text.trim(),
+        fullName: name,
         specialtyId: selectedSpecialtyId!,
-        phoneNumber: phoneController.text.trim(),
-        email: emailController.text.trim(),
+        phoneNumber: phone,
+        email: email,
         image: uploadedImageUrl,
       );
 
@@ -114,13 +135,13 @@ class _AddDoctorScreenState extends State<AddDoctorScreen> {
       showMessage(AppStrings.doctorAdded);
       Navigator.pop(context, true);
     } catch (e) {
+      showMessage('${AppStrings.addDoctorFailed}: $e');
+    } finally {
       if (mounted) {
-        showMessage('${AppStrings.addDoctorFailed}: $e');
+        setState(() {
+          isLoading = false;
+        });
       }
-    }
-
-    if (mounted) {
-      setState(() => isLoading = false);
     }
   }
 
@@ -152,9 +173,9 @@ class _AddDoctorScreenState extends State<AddDoctorScreen> {
   }
 
   ImageProvider? get previewImage {
-    if (selectedImageBytes != null) {
-      return MemoryImage(selectedImageBytes!);
-    }
+    final bytes = selectedImageBytes;
+
+    if (bytes != null) return MemoryImage(bytes);
 
     if (imageUrl.startsWith('http://') || imageUrl.startsWith('https://')) {
       return NetworkImage(imageUrl);
@@ -167,6 +188,35 @@ class _AddDoctorScreenState extends State<AddDoctorScreen> {
     return null;
   }
 
+  List<DropdownMenuItem<int>> specialtyItems() {
+    return specialties.map((specialty) {
+      final id = specialty['specialtyId'];
+      final value = id is int ? id : int.tryParse(id.toString());
+      final name = specialty['name']?.toString() ?? '';
+      final icon = specialty['icon']?.toString() ?? '';
+
+      return DropdownMenuItem<int>(
+        value: value,
+        child: Row(
+          children: [
+            Icon(
+              getIconData(icon),
+              size: 20,
+              color: primary,
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                name,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        ),
+      );
+    }).toList();
+  }
+
   @override
   void dispose() {
     nameController.dispose();
@@ -177,10 +227,10 @@ class _AddDoctorScreenState extends State<AddDoctorScreen> {
 
   @override
   Widget build(BuildContext context) {
-    const primary = Color(0xff5B2EFF);
+    final image = previewImage;
 
     return Scaffold(
-      backgroundColor: const Color(0xffF7F8FC),
+      backgroundColor: background,
       appBar: AppBar(
         title: Text(AppStrings.addDoctor),
         backgroundColor: Colors.white,
@@ -197,9 +247,9 @@ class _AddDoctorScreenState extends State<AddDoctorScreen> {
               Center(
                 child: CircleAvatar(
                   radius: 52,
-                  backgroundColor: const Color(0xffEDE7FF),
-                  backgroundImage: previewImage,
-                  child: previewImage == null
+                  backgroundColor: lightPurple,
+                  backgroundImage: image,
+                  child: image == null
                       ? const Icon(
                     Icons.local_hospital,
                     size: 55,
@@ -217,6 +267,7 @@ class _AddDoctorScreenState extends State<AddDoctorScreen> {
               const SizedBox(height: 20),
               TextField(
                 controller: nameController,
+                textInputAction: TextInputAction.next,
                 decoration: inputDecoration(
                   hint: AppStrings.doctorFullName,
                   icon: Icons.person,
@@ -239,32 +290,10 @@ class _AddDoctorScreenState extends State<AddDoctorScreen> {
                   hint: AppStrings.specialty,
                   icon: Icons.medical_services,
                 ),
-                items: specialties.map((specialty) {
-                  final id = specialty['specialtyId'];
-                  final name = specialty['name']?.toString() ?? '';
-                  final icon = specialty['icon']?.toString() ?? '';
-
-                  return DropdownMenuItem<int>(
-                    value: id is int ? id : int.tryParse(id.toString()),
-                    child: Row(
-                      children: [
-                        Icon(
-                          getIconData(icon),
-                          size: 20,
-                          color: primary,
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Text(
-                            name,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                      ],
-                    ),
-                  );
-                }).toList(),
+                items: specialtyItems(),
                 onChanged: (value) {
+                  if (selectedSpecialtyId == value) return;
+
                   setState(() {
                     selectedSpecialtyId = value;
                   });
@@ -274,6 +303,7 @@ class _AddDoctorScreenState extends State<AddDoctorScreen> {
               TextField(
                 controller: phoneController,
                 keyboardType: TextInputType.phone,
+                textInputAction: TextInputAction.next,
                 decoration: inputDecoration(
                   hint: AppStrings.phoneNumber,
                   icon: Icons.phone,
@@ -283,6 +313,7 @@ class _AddDoctorScreenState extends State<AddDoctorScreen> {
               TextField(
                 controller: emailController,
                 keyboardType: TextInputType.emailAddress,
+                textInputAction: TextInputAction.done,
                 decoration: inputDecoration(
                   hint: AppStrings.email,
                   icon: Icons.email,
@@ -295,6 +326,7 @@ class _AddDoctorScreenState extends State<AddDoctorScreen> {
                   style: ElevatedButton.styleFrom(
                     backgroundColor: primary,
                     foregroundColor: Colors.white,
+                    disabledBackgroundColor: primary.withOpacity(.65),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(16),
                     ),

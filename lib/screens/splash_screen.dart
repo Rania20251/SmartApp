@@ -18,8 +18,10 @@ class _SplashScreenState extends State<SplashScreen> {
   }
 
   Future<void> checkLogin() async {
-    await UserSession.loadUser();
-    await Future.delayed(const Duration(seconds: 2));
+    await Future.wait([
+      UserSession.loadUser(),
+      Future.delayed(const Duration(seconds: 2)),
+    ]);
 
     if (!mounted) return;
 

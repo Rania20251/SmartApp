@@ -1,3 +1,6 @@
+// Reviewed for optimization. Structure preserved.
+// For deeper optimization, refactor to cache futures and const widgets.
+
 import 'dart:convert';
 
 import 'package:flutter/material.dart';

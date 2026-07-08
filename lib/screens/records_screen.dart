@@ -16,26 +16,32 @@ class RecordsScreen extends StatefulWidget {
 }
 
 class _RecordsScreenState extends State<RecordsScreen> {
+  static const Color primary = Color(0xff5B2EFF);
+  static const Color background = Color(0xffF7F8FC);
+  static const Color lightPurple = Color(0xffEDE7FF);
+
   late Future<List<dynamic>> recordsFuture;
   bool isUploading = false;
 
   @override
   void initState() {
     super.initState();
-    loadRecords();
+    recordsFuture = getRecords();
   }
 
-  void loadRecords() {
-    recordsFuture = ApiService.getMedicalRecordsByUser(UserSession.userId ?? 0);
+  Future<List<dynamic>> getRecords() {
+    return ApiService.getMedicalRecordsByUser(UserSession.userId ?? 0);
   }
 
   void refreshRecords() {
     setState(() {
-      loadRecords();
+      recordsFuture = getRecords();
     });
   }
 
   void showMessage(String message) {
+    if (!mounted) return;
+
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(message)),
     );
@@ -44,13 +50,19 @@ class _RecordsScreenState extends State<RecordsScreen> {
   String getFileName(String path) {
     if (path.isEmpty) return '';
     if (path.startsWith('data:')) return 'uploaded_file';
-    return path.split('/').last.split('\\').last;
+
+    final slashIndex = path.lastIndexOf('/');
+    final backSlashIndex = path.lastIndexOf('\\');
+    final index = slashIndex > backSlashIndex ? slashIndex : backSlashIndex;
+
+    return index == -1 ? path : path.substring(index + 1);
   }
 
   IconData getFileIcon(String fileName) {
     final name = fileName.toLowerCase();
 
     if (name.endsWith('.pdf')) return Icons.picture_as_pdf;
+
     if (name.endsWith('.jpg') ||
         name.endsWith('.jpeg') ||
         name.endsWith('.png')) {
@@ -71,19 +83,26 @@ class _RecordsScreenState extends State<RecordsScreen> {
   }
 
   Future<void> openFileUrl(String fileUrl) async {
-    if (fileUrl.trim().isEmpty) {
+    final url = fileUrl.trim();
+
+    if (url.isEmpty) {
       showMessage(AppStrings.noFileFound);
       return;
     }
 
-    final uri = Uri.parse(fileUrl);
+    final uri = Uri.tryParse(url);
+
+    if (uri == null) {
+      showMessage(AppStrings.couldNotOpenFile);
+      return;
+    }
 
     final opened = await launchUrl(
       uri,
       mode: LaunchMode.externalApplication,
     );
 
-    if (!opened && mounted) {
+    if (!opened) {
       showMessage(AppStrings.couldNotOpenFile);
     }
   }
@@ -93,7 +112,7 @@ class _RecordsScreenState extends State<RecordsScreen> {
 
     final result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
-      allowedExtensions: ['pdf', 'jpg', 'jpeg', 'png'],
+      allowedExtensions: const ['pdf', 'jpg', 'jpeg', 'png'],
       withData: true,
     );
 
@@ -113,8 +132,7 @@ class _RecordsScreenState extends State<RecordsScreen> {
     });
 
     try {
-      final base64File = base64Encode(bytes);
-      final fileUrl = 'data:${mimeType(fileName)};base64,$base64File';
+      final fileUrl = 'data:${mimeType(fileName)};base64,${base64Encode(bytes)}';
 
       await ApiService.createMedicalRecord(
         patientId: UserSession.userId ?? 0,
@@ -126,35 +144,37 @@ class _RecordsScreenState extends State<RecordsScreen> {
         fileUrl: fileUrl,
       );
 
-      refreshRecords();
-
       if (!mounted) return;
+
+      setState(() {
+        recordsFuture = getRecords();
+        isUploading = false;
+      });
 
       showMessage(AppStrings.reportUploaded);
     } catch (e) {
       if (!mounted) return;
 
-      showMessage('${AppStrings.uploadFailed}: $e');
-    }
-
-    if (mounted) {
       setState(() {
         isUploading = false;
       });
+
+      showMessage('${AppStrings.uploadFailed}: $e');
     }
   }
 
   Future<void> deleteRecord(int recordId) async {
     try {
       await ApiService.deleteMedicalRecord(recordId);
-      refreshRecords();
 
       if (!mounted) return;
+
+      setState(() {
+        recordsFuture = getRecords();
+      });
 
       showMessage(AppStrings.recordDeleted);
-    } catch (e) {
-      if (!mounted) return;
-
+    } catch (_) {
       showMessage(AppStrings.deleteRecordFailed);
     }
   }
@@ -193,15 +213,16 @@ class _RecordsScreenState extends State<RecordsScreen> {
 
     final text = value.toString();
 
-    if (text.contains('T')) return text.split('T').first;
-    if (text.contains(' ')) return text.split(' ').first;
+    final tIndex = text.indexOf('T');
+    if (tIndex != -1) return text.substring(0, tIndex);
+
+    final spaceIndex = text.indexOf(' ');
+    if (spaceIndex != -1) return text.substring(0, spaceIndex);
 
     return text;
   }
 
   Widget uploadBox() {
-    const primary = Color(0xff5B2EFF);
-
     return Container(
       margin: const EdgeInsets.fromLTRB(18, 18, 18, 10),
       padding: const EdgeInsets.all(18),
@@ -247,6 +268,7 @@ class _RecordsScreenState extends State<RecordsScreen> {
               style: ElevatedButton.styleFrom(
                 backgroundColor: primary,
                 foregroundColor: Colors.white,
+                disabledBackgroundColor: primary.withOpacity(.65),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(15),
                 ),
@@ -259,13 +281,15 @@ class _RecordsScreenState extends State<RecordsScreen> {
   }
 
   Widget recordCard(dynamic record) {
-    const primary = Color(0xff5B2EFF);
-
     final recordId = int.tryParse(record['recordId']?.toString() ?? '0') ?? 0;
 
     final fileUrl = record['fileUrl']?.toString() ?? '';
     final title = record['title']?.toString() ?? AppStrings.medicalRecord;
+    final description = record['description']?.toString() ?? '';
+    final status = record['status']?.toString() ?? '';
+    final date = formatDate(record['recordDate']);
     final fileName = fileUrl.startsWith('data:') ? title : getFileName(fileUrl);
+    final icon = getFileIcon(fileName);
 
     return Container(
       margin: const EdgeInsets.fromLTRB(18, 0, 18, 16),
@@ -279,8 +303,8 @@ class _RecordsScreenState extends State<RecordsScreen> {
         children: [
           CircleAvatar(
             radius: 30,
-            backgroundColor: const Color(0xffEDE7FF),
-            child: Icon(getFileIcon(fileName), color: primary),
+            backgroundColor: lightPurple,
+            child: Icon(icon, color: primary),
           ),
           const SizedBox(width: 14),
           Expanded(
@@ -296,14 +320,14 @@ class _RecordsScreenState extends State<RecordsScreen> {
                 ),
                 const SizedBox(height: 6),
                 Text(
-                  record['description']?.toString() ?? '',
+                  description,
                   style: const TextStyle(color: Colors.grey),
                 ),
                 const SizedBox(height: 8),
-                Text('${AppStrings.date}: ${formatDate(record['recordDate'])}'),
+                Text('${AppStrings.date}: $date'),
                 const SizedBox(height: 8),
                 Text(
-                  record['status']?.toString() ?? '',
+                  status,
                   style: const TextStyle(
                     color: primary,
                     fontWeight: FontWeight.bold,
@@ -354,7 +378,7 @@ class _RecordsScreenState extends State<RecordsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xffF7F8FC),
+      backgroundColor: background,
       appBar: AppBar(
         title: Text(AppStrings.medicalRecords),
         backgroundColor: Colors.white,
@@ -395,9 +419,7 @@ class _RecordsScreenState extends State<RecordsScreen> {
 
                 return ListView.builder(
                   itemCount: records.length,
-                  itemBuilder: (context, index) {
-                    return recordCard(records[index]);
-                  },
+                  itemBuilder: (context, index) => recordCard(records[index]),
                 );
               },
             ),

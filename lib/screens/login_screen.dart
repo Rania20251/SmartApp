@@ -14,6 +14,9 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
+  static const Color primary = Color(0xff5B2EFF);
+  static const Color background = Color(0xffF7F8FC);
+
   final emailController = TextEditingController();
   final passwordController = TextEditingController();
 
@@ -21,21 +24,27 @@ class _LoginScreenState extends State<LoginScreen> {
   bool obscurePassword = true;
 
   void showMessage(String message) {
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(message)),
     );
   }
 
   Future<void> loginUser() async {
-    if (emailController.text.trim().isEmpty) {
+    final email = emailController.text.trim();
+    final password = passwordController.text.trim();
+
+    if (email.isEmpty) {
       showMessage(AppStrings.enterEmail);
       return;
     }
 
-    if (passwordController.text.trim().isEmpty) {
+    if (password.isEmpty) {
       showMessage(AppStrings.enterPassword);
       return;
     }
+
+    if (isLoading) return;
 
     setState(() {
       isLoading = true;
@@ -43,8 +52,8 @@ class _LoginScreenState extends State<LoginScreen> {
 
     try {
       final user = await ApiService.login(
-        email: emailController.text.trim(),
-        password: passwordController.text.trim(),
+        email: email,
+        password: password,
       );
 
       if (!mounted) return;
@@ -64,17 +73,33 @@ class _LoginScreenState extends State<LoginScreen> {
       } else {
         showMessage(AppStrings.invalidLogin);
       }
-    } catch (e) {
+    } catch (_) {
+      showMessage(AppStrings.connectionFailed);
+    } finally {
       if (mounted) {
-        showMessage(AppStrings.connectionFailed);
+        setState(() {
+          isLoading = false;
+        });
       }
     }
+  }
 
-    if (mounted) {
-      setState(() {
-        isLoading = false;
-      });
-    }
+  void goToForgotPassword() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => const ForgotPasswordScreen(),
+      ),
+    );
+  }
+
+  void goToRegister() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => const RegisterScreen(),
+      ),
+    );
   }
 
   @override
@@ -86,12 +111,10 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
-    const primary = Color(0xff5B2EFF);
-
     return Directionality(
       textDirection: AppStrings.isArabic ? TextDirection.rtl : TextDirection.ltr,
       child: Scaffold(
-        backgroundColor: const Color(0xffF7F8FC),
+        backgroundColor: background,
         body: Center(
           child: SingleChildScrollView(
             child: Container(
@@ -132,11 +155,12 @@ class _LoginScreenState extends State<LoginScreen> {
                   TextField(
                     controller: emailController,
                     keyboardType: TextInputType.emailAddress,
+                    textInputAction: TextInputAction.next,
                     decoration: InputDecoration(
                       hintText: AppStrings.email,
                       prefixIcon: const Icon(Icons.email),
                       filled: true,
-                      fillColor: const Color(0xffF7F8FC),
+                      fillColor: background,
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(16),
                         borderSide: BorderSide.none,
@@ -147,6 +171,8 @@ class _LoginScreenState extends State<LoginScreen> {
                   TextField(
                     controller: passwordController,
                     obscureText: obscurePassword,
+                    textInputAction: TextInputAction.done,
+                    onSubmitted: (_) => loginUser(),
                     decoration: InputDecoration(
                       hintText: AppStrings.password,
                       prefixIcon: const Icon(Icons.lock),
@@ -163,7 +189,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         },
                       ),
                       filled: true,
-                      fillColor: const Color(0xffF7F8FC),
+                      fillColor: background,
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(16),
                         borderSide: BorderSide.none,
@@ -175,14 +201,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         ? Alignment.centerLeft
                         : Alignment.centerRight,
                     child: TextButton(
-                      onPressed: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => const ForgotPasswordScreen(),
-                          ),
-                        );
-                      },
+                      onPressed: goToForgotPassword,
                       child: Text(
                         AppStrings.isArabic
                             ? 'نسيت كلمة المرور؟'
@@ -202,6 +221,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       style: ElevatedButton.styleFrom(
                         backgroundColor: primary,
                         foregroundColor: Colors.white,
+                        disabledBackgroundColor: primary.withOpacity(.65),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(16),
                         ),
@@ -224,14 +244,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                   const SizedBox(height: 16),
                   TextButton(
-                    onPressed: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => const RegisterScreen(),
-                        ),
-                      );
-                    },
+                    onPressed: goToRegister,
                     child: Text(AppStrings.createNewAccount),
                   ),
                 ],

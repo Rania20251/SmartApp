@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+
 import '../language/app_strings.dart';
 import '../services/api_service.dart';
 import '../services/user_session.dart';
@@ -11,6 +12,9 @@ class ChangePasswordScreen extends StatefulWidget {
 }
 
 class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
+  static const Color primary = Color(0xff5B2EFF);
+  static const Color background = Color(0xffF7F8FC);
+
   final oldPasswordController = TextEditingController();
   final newPasswordController = TextEditingController();
   final confirmPasswordController = TextEditingController();
@@ -21,23 +25,29 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
   bool hideConfirm = true;
 
   void showMessage(String message) {
+    if (!mounted) return;
+
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(message)),
     );
   }
 
   Future<void> changePassword() async {
-    if (oldPasswordController.text.trim().isEmpty) {
+    final oldPassword = oldPasswordController.text.trim();
+    final newPassword = newPasswordController.text.trim();
+    final confirmPassword = confirmPasswordController.text.trim();
+
+    if (oldPassword.isEmpty) {
       showMessage(AppStrings.enterOldPassword);
       return;
     }
 
-    if (newPasswordController.text.trim().isEmpty) {
+    if (newPassword.isEmpty) {
       showMessage(AppStrings.enterNewPassword);
       return;
     }
 
-    if (newPasswordController.text.trim().length < 6) {
+    if (newPassword.length < 6) {
       showMessage(
         AppStrings.isArabic
             ? 'كلمة المرور يجب أن تكون 6 أحرف على الأقل'
@@ -46,44 +56,71 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
       return;
     }
 
-    if (confirmPasswordController.text.trim().isEmpty) {
+    if (confirmPassword.isEmpty) {
       showMessage(AppStrings.confirmNewPasswordMessage);
       return;
     }
 
-    if (newPasswordController.text.trim() !=
-        confirmPasswordController.text.trim()) {
+    if (newPassword != confirmPassword) {
       showMessage(AppStrings.passwordsDoNotMatch);
       return;
     }
 
-    if (UserSession.userId == null) {
+    final userId = UserSession.userId;
+
+    if (userId == null) {
       showMessage(AppStrings.userNotFound);
       return;
     }
+
+    if (isLoading) return;
 
     setState(() {
       isLoading = true;
     });
 
-    final success = await ApiService.changePassword(
-      userId: UserSession.userId!,
-      oldPassword: oldPasswordController.text.trim(),
-      newPassword: newPasswordController.text.trim(),
-    );
+    try {
+      final success = await ApiService.changePassword(
+        userId: userId,
+        oldPassword: oldPassword,
+        newPassword: newPassword,
+      );
 
-    if (!mounted) return;
+      if (!mounted) return;
 
-    setState(() {
-      isLoading = false;
-    });
-
-    if (success) {
-      showMessage(AppStrings.passwordChanged);
-      Navigator.pop(context);
-    } else {
+      if (success) {
+        showMessage(AppStrings.passwordChanged);
+        Navigator.pop(context);
+      } else {
+        showMessage(AppStrings.passwordChangeFailed);
+      }
+    } catch (_) {
       showMessage(AppStrings.passwordChangeFailed);
+    } finally {
+      if (mounted) {
+        setState(() {
+          isLoading = false;
+        });
+      }
     }
+  }
+
+  void toggleOldPassword() {
+    setState(() {
+      hideOld = !hideOld;
+    });
+  }
+
+  void toggleNewPassword() {
+    setState(() {
+      hideNew = !hideNew;
+    });
+  }
+
+  void toggleConfirmPassword() {
+    setState(() {
+      hideConfirm = !hideConfirm;
+    });
   }
 
   @override
@@ -96,12 +133,10 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
 
   @override
   Widget build(BuildContext context) {
-    const primary = Color(0xff5B2EFF);
-
     return Directionality(
       textDirection: AppStrings.isArabic ? TextDirection.rtl : TextDirection.ltr,
       child: Scaffold(
-        backgroundColor: const Color(0xffF7F8FC),
+        backgroundColor: background,
         appBar: AppBar(
           title: Text(AppStrings.changePassword),
           backgroundColor: Colors.white,
@@ -141,45 +176,37 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
                 TextField(
                   controller: oldPasswordController,
                   obscureText: hideOld,
+                  textInputAction: TextInputAction.next,
                   decoration: passwordDecoration(
                     hint: AppStrings.oldPassword,
                     icon: Icons.lock_outline,
                     hidden: hideOld,
-                    onToggle: () {
-                      setState(() {
-                        hideOld = !hideOld;
-                      });
-                    },
+                    onToggle: toggleOldPassword,
                   ),
                 ),
                 const SizedBox(height: 16),
                 TextField(
                   controller: newPasswordController,
                   obscureText: hideNew,
+                  textInputAction: TextInputAction.next,
                   decoration: passwordDecoration(
                     hint: AppStrings.newPassword,
                     icon: Icons.lock,
                     hidden: hideNew,
-                    onToggle: () {
-                      setState(() {
-                        hideNew = !hideNew;
-                      });
-                    },
+                    onToggle: toggleNewPassword,
                   ),
                 ),
                 const SizedBox(height: 16),
                 TextField(
                   controller: confirmPasswordController,
                   obscureText: hideConfirm,
+                  textInputAction: TextInputAction.done,
+                  onSubmitted: (_) => changePassword(),
                   decoration: passwordDecoration(
                     hint: AppStrings.confirmNewPassword,
                     icon: Icons.verified_user,
                     hidden: hideConfirm,
-                    onToggle: () {
-                      setState(() {
-                        hideConfirm = !hideConfirm;
-                      });
-                    },
+                    onToggle: toggleConfirmPassword,
                   ),
                 ),
                 const SizedBox(height: 26),
@@ -189,6 +216,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
                     style: ElevatedButton.styleFrom(
                       backgroundColor: primary,
                       foregroundColor: Colors.white,
+                      disabledBackgroundColor: primary.withOpacity(.65),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(16),
                       ),

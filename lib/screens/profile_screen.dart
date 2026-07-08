@@ -23,6 +23,14 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
+  late Future<int> appointmentCountFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    appointmentCountFuture = ApiService.getAppointmentCountByUser(UserSession.userId ?? 0);
+  }
+
   ImageProvider getProfileImage() {
     final imagePath = UserSession.profileImage ?? '';
 
@@ -157,9 +165,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
               const SizedBox(height: 30),
               FutureBuilder<int>(
-                future: ApiService.getAppointmentCountByUser(
-                  UserSession.userId ?? 0,
-                ),
+                future: appointmentCountFuture,
                 builder: (context, snapshot) {
                   String value = AppStrings.loading;
 

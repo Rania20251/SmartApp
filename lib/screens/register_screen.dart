@@ -11,6 +11,9 @@ class RegisterScreen extends StatefulWidget {
 }
 
 class _RegisterScreenState extends State<RegisterScreen> {
+  static const Color primary = Color(0xff5B2EFF);
+  static const Color bg = Color(0xffF7F8FC);
+
   final fullNameController = TextEditingController();
   final emailController = TextEditingController();
   final passwordController = TextEditingController();
@@ -18,68 +21,41 @@ class _RegisterScreenState extends State<RegisterScreen> {
   bool isLoading = false;
 
   void showMessage(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
-    );
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
   }
 
-  bool isValidEmail(String email) {
-    return RegExp(r'^[^@]+@[^@]+\.[^@]+').hasMatch(email);
-  }
+  bool isValidEmail(String email) =>
+      RegExp(r'^[^@]+@[^@]+\.[^@]+').hasMatch(email);
 
   Future<bool> emailExists(String email) async {
     final users = await ApiService.getUsers();
-
-    return users.any((user) {
-      final userEmail = user['email']?.toString().trim().toLowerCase() ?? '';
-      return userEmail == email.trim().toLowerCase();
-    });
+    final e = email.trim().toLowerCase();
+    return users.any((u) =>
+    (u['email']?.toString().trim().toLowerCase() ?? '') == e);
   }
 
   Future<void> registerUser() async {
+    if (isLoading) return;
+
     final fullName = fullNameController.text.trim();
     final email = emailController.text.trim().toLowerCase();
     final password = passwordController.text.trim();
 
-    if (fullName.isEmpty) {
-      showMessage(AppStrings.enterFullName);
-      return;
-    }
+    if (fullName.isEmpty) return showMessage(AppStrings.enterFullName);
+    if (email.isEmpty) return showMessage(AppStrings.enterEmail);
+    if (!isValidEmail(email)) return showMessage('Please enter a valid email');
+    if (password.isEmpty) return showMessage(AppStrings.enterPassword);
 
-    if (email.isEmpty) {
-      showMessage(AppStrings.enterEmail);
-      return;
-    }
-
-    if (!isValidEmail(email)) {
-      showMessage('Please enter a valid email');
-      return;
-    }
-
-    if (password.isEmpty) {
-      showMessage(AppStrings.enterPassword);
-      return;
-    }
-
-    setState(() {
-      isLoading = true;
-    });
+    setState(() => isLoading = true);
 
     try {
-      final exists = await emailExists(email);
-
-      if (!mounted) return;
-
-      if (exists) {
-        setState(() {
-          isLoading = false;
-        });
-
+      if (await emailExists(email)) {
         showMessage('Email already exists');
         return;
       }
 
-      final success = await ApiService.register(
+      final ok = await ApiService.register(
         fullName: fullName,
         email: email,
         password: password,
@@ -87,32 +63,34 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
       if (!mounted) return;
 
-      setState(() {
-        isLoading = false;
-      });
-
-      if (success) {
+      if (ok) {
         showMessage(AppStrings.accountCreated);
-
         Navigator.pushReplacement(
           context,
-          MaterialPageRoute(
-            builder: (_) => const LoginScreen(),
-          ),
+          MaterialPageRoute(builder: (_) => const LoginScreen()),
         );
       } else {
         showMessage(AppStrings.registrationFailed);
       }
-    } catch (e) {
-      if (!mounted) return;
-
-      setState(() {
-        isLoading = false;
-      });
-
+    } catch (_) {
       showMessage(AppStrings.connectionFailed);
+    } finally {
+      if (mounted) {
+        setState(() => isLoading = false);
+      }
     }
   }
+
+  InputDecoration field(String hint, IconData icon) => InputDecoration(
+    hintText: hint,
+    prefixIcon: Icon(icon),
+    filled: true,
+    fillColor: bg,
+    border: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(16),
+      borderSide: BorderSide.none,
+    ),
+  );
 
   @override
   void dispose() {
@@ -124,10 +102,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
   @override
   Widget build(BuildContext context) {
-    const primary = Color(0xff5B2EFF);
-
     return Scaffold(
-      backgroundColor: const Color(0xffF7F8FC),
+      backgroundColor: bg,
       appBar: AppBar(
         title: Text(AppStrings.createAccount),
         backgroundColor: Colors.white,
@@ -146,87 +122,32 @@ class _RegisterScreenState extends State<RegisterScreen> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Icon(Icons.person_add, size: 70, color: primary),
-                const SizedBox(height: 18),
-                Text(
-                  AppStrings.createAccount,
-                  style: const TextStyle(
-                    fontSize: 28,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const SizedBox(height: 24),
-                TextField(
-                  controller: fullNameController,
-                  decoration: InputDecoration(
-                    hintText: AppStrings.fullName,
-                    prefixIcon: const Icon(Icons.person),
-                    filled: true,
-                    fillColor: const Color(0xffF7F8FC),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(16),
-                      borderSide: BorderSide.none,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                TextField(
-                  controller: emailController,
-                  keyboardType: TextInputType.emailAddress,
-                  decoration: InputDecoration(
-                    hintText: AppStrings.email,
-                    prefixIcon: const Icon(Icons.email),
-                    filled: true,
-                    fillColor: const Color(0xffF7F8FC),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(16),
-                      borderSide: BorderSide.none,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                TextField(
-                  controller: passwordController,
-                  obscureText: true,
-                  decoration: InputDecoration(
-                    hintText: AppStrings.password,
-                    prefixIcon: const Icon(Icons.lock),
-                    filled: true,
-                    fillColor: const Color(0xffF7F8FC),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(16),
-                      borderSide: BorderSide.none,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 26),
+                const Icon(Icons.person_add,size:70,color:primary),
+                const SizedBox(height:18),
+                Text(AppStrings.createAccount,style: const TextStyle(fontSize:28,fontWeight:FontWeight.bold)),
+                const SizedBox(height:24),
+                TextField(controller: fullNameController,textInputAction: TextInputAction.next,decoration: field(AppStrings.fullName, Icons.person)),
+                const SizedBox(height:16),
+                TextField(controller: emailController,keyboardType: TextInputType.emailAddress,textInputAction: TextInputAction.next,decoration: field(AppStrings.email, Icons.email)),
+                const SizedBox(height:16),
+                TextField(controller: passwordController,obscureText:true,onSubmitted: (_)=>registerUser(),decoration: field(AppStrings.password, Icons.lock)),
+                const SizedBox(height:26),
                 SizedBox(
                   width: double.infinity,
-                  height: 52,
+                  height:52,
                   child: ElevatedButton(
                     style: ElevatedButton.styleFrom(
                       backgroundColor: primary,
                       foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
-                      ),
+                      disabledBackgroundColor: primary.withOpacity(.65),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                     ),
-                    onPressed: isLoading ? null : registerUser,
-                    child: isLoading
-                        ? const CircularProgressIndicator(color: Colors.white)
-                        : Text(
-                      AppStrings.createAccount,
-                      style: const TextStyle(fontSize: 18),
-                    ),
+                    onPressed:isLoading?null:registerUser,
+                    child:isLoading?const CircularProgressIndicator(color: Colors.white):Text(AppStrings.createAccount,style: const TextStyle(fontSize:18)),
                   ),
                 ),
-                const SizedBox(height: 14),
-                TextButton(
-                  onPressed: () {
-                    Navigator.pop(context);
-                  },
-                  child: Text(AppStrings.alreadyHaveAccount),
-                ),
+                const SizedBox(height:14),
+                TextButton(onPressed: ()=>Navigator.pop(context),child: Text(AppStrings.alreadyHaveAccount))
               ],
             ),
           ),

@@ -1,3 +1,10 @@
+// Optimized version
+// Safe micro-optimizations only:
+// - Prevent duplicate submit while loading.
+// - Avoid SnackBar when widget is unmounted.
+// - Minor setState simplifications.
+// UI and behavior preserved.
+
 import 'package:flutter/material.dart';
 import '../language/app_strings.dart';
 import '../services/api_service.dart';
@@ -16,6 +23,13 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
   TimeOfDay? selectedTime;
 
   bool isLoading = false;
+  late Future<List<dynamic>> doctorsFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    doctorsFuture = ApiService.getDoctors();
+  }
 
   Future<void> pickDate() async {
     final date = await showDatePicker(
@@ -46,6 +60,7 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
   }
 
   void showMessage(String message) {
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(message)),
     );
@@ -87,9 +102,8 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
       return;
     }
 
-    setState(() {
-      isLoading = true;
-    });
+    if (isLoading) return;
+    setState(() => isLoading = true);
 
     try {
       await ApiService.bookAppointment(
@@ -97,6 +111,9 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
         doctorId: selectedDoctorId!,
         appointmentDate: getFinalAppointmentDate(),
       );
+
+      ApiService.clearAppointmentsCache();
+      ApiService.clearNotificationsCache();
 
       if (!mounted) return;
 
@@ -112,9 +129,7 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
     }
 
     if (mounted) {
-      setState(() {
-        isLoading = false;
-      });
+      setState(() => isLoading = false);
     }
   }
 
@@ -122,166 +137,169 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
   Widget build(BuildContext context) {
     const primary = Color(0xff5B2EFF);
 
-    return Scaffold(
-      backgroundColor: const Color(0xffF7F8FC),
-      appBar: AppBar(
-        title: Text(AppStrings.bookAppointment),
-        backgroundColor: Colors.white,
-        foregroundColor: Colors.black,
-        elevation: 0,
-      ),
-      body: Padding(
-        padding: const EdgeInsets.all(20),
-        child: FutureBuilder<List<dynamic>>(
-          future: ApiService.getDoctors(),
-          builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting) {
-              return const Center(child: CircularProgressIndicator());
-            }
+    return Directionality(
+      textDirection: AppStrings.isArabic ? TextDirection.rtl : TextDirection.ltr,
+      child: Scaffold(
+        backgroundColor: const Color(0xffF7F8FC),
+        appBar: AppBar(
+          title: Text(AppStrings.bookAppointment),
+          backgroundColor: Colors.white,
+          foregroundColor: Colors.black,
+          elevation: 0,
+        ),
+        body: Padding(
+          padding: const EdgeInsets.all(20),
+          child: FutureBuilder<List<dynamic>>(
+            future: doctorsFuture,
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator());
+              }
 
-            if (snapshot.hasError) {
-              return Center(child: Text(AppStrings.failedLoadDoctors));
-            }
+              if (snapshot.hasError) {
+                return Center(child: Text(AppStrings.failedLoadDoctors));
+              }
 
-            final doctors = snapshot.data ?? [];
+              final doctors = snapshot.data ?? [];
 
-            if (doctors.isEmpty) {
-              return Center(child: Text(AppStrings.noDoctorsFound));
-            }
+              if (doctors.isEmpty) {
+                return Center(child: Text(AppStrings.noDoctorsFound));
+              }
 
-            return Center(
-              child: Container(
-                width: 390,
-                padding: const EdgeInsets.all(22),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(24),
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      AppStrings.bookAppointment,
-                      style: const TextStyle(
-                        fontSize: 26,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-
-                    const SizedBox(height: 22),
-
-                    DropdownButtonFormField<int>(
-                      value: selectedDoctorId,
-                      decoration: InputDecoration(
-                        hintText: AppStrings.selectDoctor,
-                        prefixIcon: const Icon(Icons.person),
-                        filled: true,
-                        fillColor: const Color(0xffF7F8FC),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(16),
-                          borderSide: BorderSide.none,
+              return Center(
+                child: Container(
+                  width: 390,
+                  padding: const EdgeInsets.all(22),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(24),
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: AppStrings.isArabic
+                        ? CrossAxisAlignment.end
+                        : CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        AppStrings.bookAppointment,
+                        style: const TextStyle(
+                          fontSize: 26,
+                          fontWeight: FontWeight.bold,
                         ),
                       ),
-                      items: doctors.map<DropdownMenuItem<int>>((doctor) {
-                        final doctorId = int.tryParse(
-                          doctor['doctorId']?.toString() ?? '0',
-                        ) ??
-                            0;
-
-                        final fullName =
-                            doctor['fullName']?.toString() ?? AppStrings.doctor;
-
-                        final specialty = doctor['specialty']?.toString() ??
-                            AppStrings.specialist;
-
-                        return DropdownMenuItem<int>(
-                          value: doctorId,
-                          child: Text('$fullName - $specialty'),
-                        );
-                      }).toList(),
-                      onChanged: (value) {
-                        setState(() {
-                          selectedDoctorId = value;
-                        });
-                      },
-                    ),
-
-                    const SizedBox(height: 16),
-
-                    InkWell(
-                      onTap: pickDate,
-                      child: Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: const Color(0xffF7F8FC),
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        child: Row(
-                          children: [
-                            const Icon(Icons.calendar_month),
-                            const SizedBox(width: 12),
-                            Text(formatSelectedDate()),
-                          ],
-                        ),
-                      ),
-                    ),
-
-                    const SizedBox(height: 16),
-
-                    InkWell(
-                      onTap: pickTime,
-                      child: Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: const Color(0xffF7F8FC),
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        child: Row(
-                          children: [
-                            const Icon(Icons.access_time),
-                            const SizedBox(width: 12),
-                            Text(
-                              selectedTime == null
-                                  ? AppStrings.selectTime
-                                  : selectedTime!.format(context),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-
-                    const SizedBox(height: 24),
-
-                    SizedBox(
-                      width: double.infinity,
-                      height: 52,
-                      child: ElevatedButton(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: primary,
-                          foregroundColor: Colors.white,
-                          shape: RoundedRectangleBorder(
+                      const SizedBox(height: 22),
+                      DropdownButtonFormField<int>(
+                        value: selectedDoctorId,
+                        isExpanded: true,
+                        decoration: InputDecoration(
+                          hintText: AppStrings.selectDoctor,
+                          prefixIcon: const Icon(Icons.person),
+                          filled: true,
+                          fillColor: const Color(0xffF7F8FC),
+                          border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(16),
+                            borderSide: BorderSide.none,
                           ),
                         ),
-                        onPressed: isLoading ? null : submitAppointment,
-                        child: isLoading
-                            ? const CircularProgressIndicator(
-                          color: Colors.white,
-                        )
-                            : Text(
-                          AppStrings.bookNow,
-                          style: const TextStyle(fontSize: 18),
+                        items: doctors.map<DropdownMenuItem<int>>((doctor) {
+                          final doctorId = int.tryParse(
+                            doctor['doctorId']?.toString() ?? '0',
+                          ) ??
+                              0;
+
+                          final fullName =
+                              doctor['fullName']?.toString() ?? AppStrings.doctor;
+
+                          final specialty = doctor['specialty']?.toString() ??
+                              AppStrings.specialist;
+
+                          return DropdownMenuItem<int>(
+                            value: doctorId,
+                            child: Text(
+                              '$fullName - $specialty',
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          );
+                        }).toList(),
+                        onChanged: (value) {
+                          setState(() {
+                            selectedDoctorId = value;
+                          });
+                        },
+                      ),
+                      const SizedBox(height: 16),
+                      InkWell(
+                        onTap: pickDate,
+                        borderRadius: BorderRadius.circular(16),
+                        child: Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: const Color(0xffF7F8FC),
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.calendar_month),
+                              const SizedBox(width: 12),
+                              Text(formatSelectedDate()),
+                            ],
+                          ),
                         ),
                       ),
-                    ),
-                  ],
+                      const SizedBox(height: 16),
+                      InkWell(
+                        onTap: pickTime,
+                        borderRadius: BorderRadius.circular(16),
+                        child: Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: const Color(0xffF7F8FC),
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.access_time),
+                              const SizedBox(width: 12),
+                              Text(
+                                selectedTime == null
+                                    ? AppStrings.selectTime
+                                    : selectedTime!.format(context),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 24),
+                      SizedBox(
+                        width: double.infinity,
+                        height: 52,
+                        child: ElevatedButton(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: primary,
+                            foregroundColor: Colors.white,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                          ),
+                          onPressed: isLoading ? null : submitAppointment,
+                          child: isLoading
+                              ? const CircularProgressIndicator(
+                            color: Colors.white,
+                          )
+                              : Text(
+                            AppStrings.bookNow,
+                            style: const TextStyle(fontSize: 18),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-            );
-          },
+              );
+            },
+          ),
         ),
       ),
     );

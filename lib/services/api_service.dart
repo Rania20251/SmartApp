@@ -9,10 +9,56 @@ class ApiService {
   static const String siteUrl = 'http://medlink-rana.premiumasp.net';
   static const String baseUrl = '$siteUrl/api';
 
-  static Map<String, String> get headers => {
+  static const Duration normalTimeout = Duration(seconds: 20);
+  static const Duration uploadTimeout = Duration(seconds: 30);
+
+  static final Uri specialtiesUrl = Uri.parse('$baseUrl/Specialties');
+  static final Uri usersUrl = Uri.parse('$baseUrl/Users');
+  static final Uri doctorsUrl = Uri.parse('$baseUrl/Doctors');
+  static final Uri appointmentsUrl = Uri.parse('$baseUrl/Appointments');
+  static final Uri medicalRecordsUrl = Uri.parse('$baseUrl/MedicalRecords');
+
+  static Map<String, String> get headers => const {
     'Content-Type': 'application/json',
     'Accept': 'application/json',
   };
+
+  static List<dynamic>? _doctorsCache;
+  static List<dynamic>? _specialtiesCache;
+  static List<dynamic>? _appointmentsCache;
+  static final Map<int, List<dynamic>> _notificationsCache = {};
+
+  static Future<List<dynamic>>? _doctorsRequest;
+  static Future<List<dynamic>>? _specialtiesRequest;
+  static Future<List<dynamic>>? _appointmentsRequest;
+  static final Map<int, Future<List<dynamic>>> _notificationsRequests = {};
+
+  static void clearDoctorsCache() {
+    _doctorsCache = null;
+    _doctorsRequest = null;
+  }
+
+  static void clearSpecialtiesCache() {
+    _specialtiesCache = null;
+    _specialtiesRequest = null;
+    clearDoctorsCache();
+  }
+
+  static void clearAppointmentsCache() {
+    _appointmentsCache = null;
+    _appointmentsRequest = null;
+  }
+
+  static void clearNotificationsCache([int? userId]) {
+    if (userId == null) {
+      _notificationsCache.clear();
+      _notificationsRequests.clear();
+      return;
+    }
+
+    _notificationsCache.remove(userId);
+    _notificationsRequests.remove(userId);
+  }
 
   static String fixImageUrl(String image) {
     final value = image.trim();
@@ -24,7 +70,9 @@ class ApiService {
     if (value.startsWith('data:image')) return value;
     if (value.startsWith('http://') || value.startsWith('https://')) return value;
     if (value.startsWith('/')) return '$siteUrl$value';
-    if (value.startsWith('images/') || value.startsWith('uploads/')) return '$siteUrl/$value';
+    if (value.startsWith('images/') || value.startsWith('uploads/')) {
+      return '$siteUrl/$value';
+    }
     if (value.startsWith('assets/')) return value;
 
     return value;
@@ -40,17 +88,43 @@ class ApiService {
     return doctor['specialty']?.toString() ?? '';
   }
 
-  static Future<List<dynamic>> getSpecialties() async {
-    final response = await http
-        .get(Uri.parse('$baseUrl/Specialties'), headers: headers)
-        .timeout(const Duration(seconds: 20));
+  static List<dynamic> decodeList(String body) {
+    final data = jsonDecode(body);
+    return data is List ? data : [];
+  }
 
-    if (response.statusCode == 200) {
-      final data = jsonDecode(response.body);
-      if (data is List) return data;
-    }
+  static Map<String, dynamic>? decodeMap(String body) {
+    final data = jsonDecode(body);
+    return data is Map<String, dynamic> ? data : null;
+  }
 
-    return [];
+  static Future<List<dynamic>> getSpecialties({
+    bool forceRefresh = false,
+  }) async {
+    if (!forceRefresh && _specialtiesCache != null) return _specialtiesCache!;
+    if (!forceRefresh && _specialtiesRequest != null) return _specialtiesRequest!;
+
+    final request = (() async {
+      try {
+        final response =
+        await http.get(specialtiesUrl, headers: headers).timeout(normalTimeout);
+
+        if (response.statusCode == 200) {
+          _specialtiesCache = decodeList(response.body);
+          return _specialtiesCache!;
+        }
+
+        _specialtiesCache = [];
+        return [];
+      } catch (_) {
+        return _specialtiesCache ?? [];
+      } finally {
+        _specialtiesRequest = null;
+      }
+    })();
+
+    _specialtiesRequest = request;
+    return request;
   }
 
   static Future<void> createSpecialty({
@@ -59,18 +133,20 @@ class ApiService {
   }) async {
     final response = await http
         .post(
-      Uri.parse('$baseUrl/Specialties'),
+      specialtiesUrl,
       headers: headers,
       body: jsonEncode({
-        "name": name.trim(),
-        "icon": icon.trim(),
+        'name': name.trim(),
+        'icon': icon.trim(),
       }),
     )
-        .timeout(const Duration(seconds: 20));
+        .timeout(normalTimeout);
 
     if (response.statusCode != 200 && response.statusCode != 201) {
       throw Exception('Failed to create specialty: ${response.body}');
     }
+
+    clearSpecialtiesCache();
   }
 
   static Future<void> updateSpecialty({
@@ -83,26 +159,33 @@ class ApiService {
       Uri.parse('$baseUrl/Specialties/$specialtyId'),
       headers: headers,
       body: jsonEncode({
-        "specialtyId": specialtyId,
-        "name": name.trim(),
-        "icon": icon.trim(),
+        'specialtyId': specialtyId,
+        'name': name.trim(),
+        'icon': icon.trim(),
       }),
     )
-        .timeout(const Duration(seconds: 20));
+        .timeout(normalTimeout);
 
     if (response.statusCode != 200 && response.statusCode != 204) {
       throw Exception('Failed to update specialty: ${response.body}');
     }
+
+    clearSpecialtiesCache();
   }
 
   static Future<void> deleteSpecialty(int specialtyId) async {
     final response = await http
-        .delete(Uri.parse('$baseUrl/Specialties/$specialtyId'), headers: headers)
-        .timeout(const Duration(seconds: 20));
+        .delete(
+      Uri.parse('$baseUrl/Specialties/$specialtyId'),
+      headers: headers,
+    )
+        .timeout(normalTimeout);
 
     if (response.statusCode != 200 && response.statusCode != 204) {
       throw Exception('Failed to delete specialty: ${response.body}');
     }
+
+    clearSpecialtiesCache();
   }
 
   static String doctorImageBase64FromBytes(Uint8List bytes) {
@@ -126,15 +209,12 @@ class ApiService {
       ),
     );
 
-    final response = await request.send().timeout(
-      const Duration(seconds: 30),
-    );
-
+    final response = await request.send().timeout(uploadTimeout);
     final body = await response.stream.bytesToString();
 
     if (response.statusCode == 200) {
-      final data = jsonDecode(body);
-      final imageUrl = data['imageUrl']?.toString() ?? '';
+      final data = decodeMap(body);
+      final imageUrl = data?['imageUrl']?.toString() ?? '';
 
       if (imageUrl.isEmpty) {
         throw Exception('Image URL is empty');
@@ -156,15 +236,12 @@ class ApiService {
       await http.MultipartFile.fromPath('file', filePath),
     );
 
-    final response = await request.send().timeout(
-      const Duration(seconds: 30),
-    );
-
+    final response = await request.send().timeout(uploadTimeout);
     final body = await response.stream.bytesToString();
 
     if (response.statusCode == 200) {
-      final data = jsonDecode(body);
-      final imageUrl = data['imageUrl']?.toString() ?? '';
+      final data = decodeMap(body);
+      final imageUrl = data?['imageUrl']?.toString() ?? '';
 
       if (imageUrl.isEmpty) {
         throw Exception('Image URL is empty');
@@ -186,20 +263,18 @@ class ApiService {
         Uri.parse('$baseUrl/Users/login'),
         headers: headers,
         body: jsonEncode({
-          "email": email.trim(),
-          "password": password.trim(),
+          'email': email.trim().toLowerCase(),
+          'password': password.trim(),
         }),
       )
-          .timeout(const Duration(seconds: 20));
+          .timeout(normalTimeout);
 
       if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        if (data is Map<String, dynamic>) return data;
+        return decodeMap(response.body);
       }
 
       return null;
-    } catch (e) {
-      print('LOGIN ERROR: $e');
+    } catch (_) {
       return null;
     }
   }
@@ -213,17 +288,13 @@ class ApiService {
         Uri.parse('$baseUrl/Users/send-reset-code'),
         headers: headers,
         body: jsonEncode({
-          "email": email.trim(),
+          'email': email.trim(),
         }),
       )
-          .timeout(const Duration(seconds: 20));
-
-      print('SEND RESET CODE STATUS: ${response.statusCode}');
-      print('SEND RESET CODE BODY: ${response.body}');
+          .timeout(normalTimeout);
 
       return response.statusCode == 200 || response.statusCode == 204;
-    } catch (e) {
-      print('SEND RESET CODE ERROR: $e');
+    } catch (_) {
       return false;
     }
   }
@@ -238,18 +309,14 @@ class ApiService {
         Uri.parse('$baseUrl/Users/verify-reset-code'),
         headers: headers,
         body: jsonEncode({
-          "email": email.trim(),
-          "code": code.trim(),
+          'email': email.trim(),
+          'code': code.trim(),
         }),
       )
-          .timeout(const Duration(seconds: 20));
-
-      print('VERIFY RESET CODE STATUS: ${response.statusCode}');
-      print('VERIFY RESET CODE BODY: ${response.body}');
+          .timeout(normalTimeout);
 
       return response.statusCode == 200 || response.statusCode == 204;
-    } catch (e) {
-      print('VERIFY RESET CODE ERROR: $e');
+    } catch (_) {
       return false;
     }
   }
@@ -265,19 +332,15 @@ class ApiService {
         Uri.parse('$baseUrl/Users/reset-password'),
         headers: headers,
         body: jsonEncode({
-          "email": email.trim(),
-          "code": code.trim(),
-          "newPassword": newPassword.trim(),
+          'email': email.trim(),
+          'code': code.trim(),
+          'newPassword': newPassword.trim(),
         }),
       )
-          .timeout(const Duration(seconds: 20));
-
-      print('RESET PASSWORD STATUS: ${response.statusCode}');
-      print('RESET PASSWORD BODY: ${response.body}');
+          .timeout(normalTimeout);
 
       return response.statusCode == 200 || response.statusCode == 204;
-    } catch (e) {
-      print('RESET PASSWORD ERROR: $e');
+    } catch (_) {
       return false;
     }
   }
@@ -290,25 +353,24 @@ class ApiService {
     try {
       final response = await http
           .post(
-        Uri.parse('$baseUrl/Users'),
+        usersUrl,
         headers: headers,
         body: jsonEncode({
-          "fullName": fullName.trim(),
-          "email": email.trim(),
-          "password": password.trim(),
-          "phoneNumber": "",
-          "address": "",
-          "gender": "",
-          "dateOfBirth": "",
-          "profileImage": "assets/images/profile.jpg",
-          "role": "Patient",
+          'fullName': fullName.trim(),
+          'email': email.trim(),
+          'password': password.trim(),
+          'phoneNumber': '',
+          'address': '',
+          'gender': '',
+          'dateOfBirth': '',
+          'profileImage': 'assets/images/profile.jpg',
+          'role': 'Patient',
         }),
       )
-          .timeout(const Duration(seconds: 20));
+          .timeout(normalTimeout);
 
       return response.statusCode == 200 || response.statusCode == 201;
-    } catch (e) {
-      print('REGISTER ERROR: $e');
+    } catch (_) {
       return false;
     }
   }
@@ -330,53 +392,52 @@ class ApiService {
         Uri.parse('$baseUrl/Users/$userId'),
         headers: headers,
         body: jsonEncode({
-          "userId": userId,
-          "fullName": fullName.trim(),
-          "email": email.trim(),
-          "password": password.trim(),
-          "phoneNumber": phoneNumber.trim(),
-          "address": address.trim(),
-          "gender": gender.trim(),
-          "dateOfBirth": dateOfBirth.trim(),
-          "profileImage": profileImage.trim(),
+          'userId': userId,
+          'fullName': fullName.trim(),
+          'email': email.trim(),
+          'password': password.trim(),
+          'phoneNumber': phoneNumber.trim(),
+          'address': address.trim(),
+          'gender': gender.trim(),
+          'dateOfBirth': dateOfBirth.trim(),
+          'profileImage': profileImage.trim(),
         }),
       )
-          .timeout(const Duration(seconds: 20));
+          .timeout(normalTimeout);
 
       return response.statusCode == 200 || response.statusCode == 204;
-    } catch (e) {
-      print('UPDATE USER ERROR: $e');
+    } catch (_) {
       return false;
     }
   }
 
   static Future<List<dynamic>> getUsers() async {
-    final response = await http
-        .get(Uri.parse('$baseUrl/Users'), headers: headers)
-        .timeout(const Duration(seconds: 20));
+    try {
+      final response =
+      await http.get(usersUrl, headers: headers).timeout(normalTimeout);
 
-    if (response.statusCode == 200) {
-      final data = jsonDecode(response.body);
-      if (data is List) return data;
+      if (response.statusCode == 200) {
+        return decodeList(response.body);
+      }
+
+      return [];
+    } catch (_) {
+      return [];
     }
-
-    return [];
   }
 
   static Future<List<dynamic>> getPatients() async {
     try {
       final response = await http
           .get(Uri.parse('$baseUrl/Users/patients'), headers: headers)
-          .timeout(const Duration(seconds: 20));
+          .timeout(normalTimeout);
 
       if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        if (data is List) return data;
+        return decodeList(response.body);
       }
 
       return [];
-    } catch (e) {
-      print('GET PATIENTS ERROR: $e');
+    } catch (_) {
       return [];
     }
   }
@@ -385,16 +446,14 @@ class ApiService {
     try {
       final response = await http
           .get(Uri.parse('$baseUrl/Users/recent-patients'), headers: headers)
-          .timeout(const Duration(seconds: 20));
+          .timeout(normalTimeout);
 
       if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        if (data is List) return data;
+        return decodeList(response.body);
       }
 
       return [];
-    } catch (e) {
-      print('GET RECENT PATIENTS ERROR: $e');
+    } catch (_) {
       return [];
     }
   }
@@ -402,7 +461,7 @@ class ApiService {
   static Future<void> deleteUser(int userId) async {
     final response = await http
         .delete(Uri.parse('$baseUrl/Users/$userId'), headers: headers)
-        .timeout(const Duration(seconds: 20));
+        .timeout(normalTimeout);
 
     if (response.statusCode != 200 && response.statusCode != 204) {
       throw Exception('Failed to delete user');
@@ -430,52 +489,67 @@ class ApiService {
         Uri.parse('$baseUrl/Users/change-password/$userId'),
         headers: headers,
         body: jsonEncode({
-          "oldPassword": oldPassword.trim(),
-          "newPassword": newPassword.trim(),
+          'oldPassword': oldPassword.trim(),
+          'newPassword': newPassword.trim(),
         }),
       )
-          .timeout(const Duration(seconds: 20));
+          .timeout(normalTimeout);
 
       return response.statusCode == 200 || response.statusCode == 204;
-    } catch (e) {
-      print('CHANGE PASSWORD ERROR: $e');
+    } catch (_) {
       return false;
     }
   }
 
-  static Future<List<dynamic>> getDoctors() async {
-    try {
-      final response = await http
-          .get(Uri.parse('$baseUrl/Doctors'), headers: headers)
-          .timeout(const Duration(seconds: 20));
+  static Future<List<dynamic>> getDoctors({
+    bool forceRefresh = false,
+  }) async {
+    if (!forceRefresh && _doctorsCache != null) return _doctorsCache!;
+    if (!forceRefresh && _doctorsRequest != null) return _doctorsRequest!;
 
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        if (data is List) {
-          return data.map((doctor) {
+    final request = (() async {
+      try {
+        final response =
+        await http.get(doctorsUrl, headers: headers).timeout(normalTimeout);
+
+        if (response.statusCode == 200) {
+          final data = decodeList(response.body);
+
+          final doctors = data.map((doctor) {
             if (doctor is Map<String, dynamic>) {
               doctor['image'] = fixImageUrl(doctor['image']?.toString() ?? '');
               doctor['specialty'] = getSpecialtyName(doctor);
             }
             return doctor;
           }).toList();
-        }
-      }
 
-      return [];
-    } catch (e) {
-      print('GET DOCTORS ERROR: $e');
-      return [];
-    }
+          _doctorsCache = doctors;
+          return doctors;
+        }
+
+        _doctorsCache = [];
+        return [];
+      } catch (_) {
+        return _doctorsCache ?? [];
+      } finally {
+        _doctorsRequest = null;
+      }
+    })();
+
+    _doctorsRequest = request;
+    return request;
   }
 
   static Future<List<dynamic>> searchDoctors(String query) async {
     final doctors = await getDoctors();
-    final search = query.toLowerCase();
+    final search = query.trim().toLowerCase();
+
+    if (search.isEmpty) return doctors;
 
     return doctors.where((doctor) {
       final name = doctor['fullName']?.toString().toLowerCase() ?? '';
       final specialty = doctor['specialty']?.toString().toLowerCase() ?? '';
+
       return name.contains(search) || specialty.contains(search);
     }).toList();
   }
@@ -484,12 +558,12 @@ class ApiService {
     try {
       final response = await http
           .get(Uri.parse('$baseUrl/Doctors/$id'), headers: headers)
-          .timeout(const Duration(seconds: 20));
+          .timeout(normalTimeout);
 
       if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
+        final data = decodeMap(response.body);
 
-        if (data is Map<String, dynamic>) {
+        if (data != null) {
           data['image'] = fixImageUrl(data['image']?.toString() ?? '');
           data['specialty'] = getSpecialtyName(data);
         }
@@ -498,8 +572,7 @@ class ApiService {
       }
 
       return null;
-    } catch (e) {
-      print('GET DOCTOR BY ID ERROR: $e');
+    } catch (_) {
       return null;
     }
   }
@@ -511,25 +584,25 @@ class ApiService {
     required String email,
     required String image,
   }) async {
-    final fixedImage = fixImageUrl(image);
-
     final response = await http
         .post(
-      Uri.parse('$baseUrl/Doctors'),
+      doctorsUrl,
       headers: headers,
       body: jsonEncode({
-        "fullName": fullName.trim(),
-        "specialtyId": specialtyId,
-        "phoneNumber": phoneNumber.trim(),
-        "email": email.trim(),
-        "image": fixedImage,
+        'fullName': fullName.trim(),
+        'specialtyId': specialtyId,
+        'phoneNumber': phoneNumber.trim(),
+        'email': email.trim(),
+        'image': fixImageUrl(image),
       }),
     )
-        .timeout(const Duration(seconds: 20));
+        .timeout(normalTimeout);
 
     if (response.statusCode != 200 && response.statusCode != 201) {
       throw Exception('Failed to create doctor: ${response.body}');
     }
+
+    clearDoctorsCache();
   }
 
   static Future<void> updateDoctor({
@@ -540,36 +613,38 @@ class ApiService {
     required String email,
     required String image,
   }) async {
-    final fixedImage = fixImageUrl(image);
-
     final response = await http
         .put(
       Uri.parse('$baseUrl/Doctors/$doctorId'),
       headers: headers,
       body: jsonEncode({
-        "doctorId": doctorId,
-        "fullName": fullName.trim(),
-        "specialtyId": specialtyId,
-        "phoneNumber": phoneNumber.trim(),
-        "email": email.trim(),
-        "image": fixedImage,
+        'doctorId': doctorId,
+        'fullName': fullName.trim(),
+        'specialtyId': specialtyId,
+        'phoneNumber': phoneNumber.trim(),
+        'email': email.trim(),
+        'image': fixImageUrl(image),
       }),
     )
-        .timeout(const Duration(seconds: 20));
+        .timeout(normalTimeout);
 
     if (response.statusCode != 200 && response.statusCode != 204) {
       throw Exception('Failed to update doctor: ${response.body}');
     }
+
+    clearDoctorsCache();
   }
 
   static Future<void> deleteDoctor(int doctorId) async {
     final response = await http
         .delete(Uri.parse('$baseUrl/Doctors/$doctorId'), headers: headers)
-        .timeout(const Duration(seconds: 20));
+        .timeout(normalTimeout);
 
     if (response.statusCode != 200 && response.statusCode != 204) {
       throw Exception('Failed to delete doctor');
     }
+
+    clearDoctorsCache();
   }
 
   static Future<void> bookAppointment({
@@ -579,97 +654,91 @@ class ApiService {
   }) async {
     final response = await http
         .post(
-      Uri.parse('$baseUrl/Appointments'),
+      appointmentsUrl,
       headers: headers,
       body: jsonEncode({
-        "patientId": patientId,
-        "doctorId": doctorId,
-        "appointmentDate": appointmentDate.toIso8601String(),
-        "status": "Pending",
+        'patientId': patientId,
+        'doctorId': doctorId,
+        'appointmentDate': appointmentDate.toIso8601String(),
+        'status': 'Pending',
       }),
     )
-        .timeout(const Duration(seconds: 20));
+        .timeout(normalTimeout);
 
     if (response.statusCode != 200 && response.statusCode != 201) {
       throw Exception('Failed to book appointment');
     }
+
+    clearAppointmentsCache();
+    clearNotificationsCache(patientId);
   }
 
-  static Future<List<dynamic>> getAllAppointments() async {
-    try {
-      final response = await http
-          .get(Uri.parse('$baseUrl/Appointments'), headers: headers)
-          .timeout(const Duration(seconds: 20));
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        if (data is! List) return [];
-
-        return data.map((appointment) {
-          if (appointment is Map<String, dynamic>) {
-            final doctorImage = appointment['doctorImage'] ??
-                appointment['DoctorImage'] ??
-                appointment['image'] ??
-                appointment['Image'];
-
-            final fixedImage = fixImageUrl(doctorImage?.toString() ?? '');
-
-            appointment['doctorImage'] = fixedImage;
-            appointment['DoctorImage'] = fixedImage;
-            appointment['image'] = fixedImage;
-          }
-
-          return appointment;
-        }).toList();
-      }
-
-      return [];
-    } catch (e) {
-      print('GET ALL APPOINTMENTS ERROR: $e');
-      return [];
+  static Future<List<dynamic>> getAllAppointments({
+    bool forceRefresh = false,
+  }) async {
+    if (!forceRefresh && _appointmentsCache != null) return _appointmentsCache!;
+    if (!forceRefresh && _appointmentsRequest != null) {
+      return _appointmentsRequest!;
     }
+
+    final request = (() async {
+      try {
+        final response = await http
+            .get(appointmentsUrl, headers: headers)
+            .timeout(normalTimeout);
+
+        if (response.statusCode == 200) {
+          final data = decodeList(response.body);
+
+          final appointments = data.map((appointment) {
+            if (appointment is Map<String, dynamic>) {
+              final doctorImage = appointment['doctorImage'] ??
+                  appointment['DoctorImage'] ??
+                  appointment['image'] ??
+                  appointment['Image'];
+
+              final fixedImage = fixImageUrl(doctorImage?.toString() ?? '');
+
+              appointment['doctorImage'] = fixedImage;
+              appointment['DoctorImage'] = fixedImage;
+              appointment['image'] = fixedImage;
+            }
+
+            return appointment;
+          }).toList();
+
+          _appointmentsCache = appointments;
+          return appointments;
+        }
+
+        _appointmentsCache = [];
+        return [];
+      } catch (_) {
+        return _appointmentsCache ?? [];
+      } finally {
+        _appointmentsRequest = null;
+      }
+    })();
+
+    _appointmentsRequest = request;
+    return request;
   }
 
-  static Future<List<dynamic>> getAppointments() async {
+  static Future<List<dynamic>> getAppointments({
+    bool forceRefresh = false,
+  }) async {
     try {
-      final response = await http
-          .get(Uri.parse('$baseUrl/Appointments'), headers: headers)
-          .timeout(const Duration(seconds: 20));
+      final appointments = await getAllAppointments(forceRefresh: forceRefresh);
 
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        if (data is! List) return [];
+      if (UserSession.userId == null) return appointments;
 
-        final appointments = data.map((appointment) {
-          if (appointment is Map<String, dynamic>) {
-            final doctorImage = appointment['doctorImage'] ??
-                appointment['DoctorImage'] ??
-                appointment['image'] ??
-                appointment['Image'];
+      final currentUserId = UserSession.userId.toString();
 
-            final fixedImage = fixImageUrl(doctorImage?.toString() ?? '');
-
-            appointment['doctorImage'] = fixedImage;
-            appointment['DoctorImage'] = fixedImage;
-            appointment['image'] = fixedImage;
-          }
-
-          return appointment;
-        }).toList();
-
-        if (UserSession.userId == null) return appointments;
-
-        return appointments.where((appointment) {
-          return appointment['patientId']?.toString() ==
-              UserSession.userId.toString() ||
-              appointment['PatientId']?.toString() ==
-                  UserSession.userId.toString();
-        }).toList();
-      }
-
-      return [];
-    } catch (e) {
-      print('GET APPOINTMENTS ERROR: $e');
+      return appointments.where((appointment) {
+        return appointment['patientId']?.toString() == currentUserId ||
+            appointment['PatientId']?.toString() == currentUserId;
+      }).toList();
+    } catch (_) {
       return [];
     }
   }
@@ -685,25 +754,30 @@ class ApiService {
       Uri.parse('$baseUrl/Appointments/$appointmentId'),
       headers: headers,
       body: jsonEncode({
-        "appointmentId": appointment['appointmentId'],
-        "patientId": appointment['patientId'],
-        "doctorId": appointment['doctorId'],
-        "appointmentDate": appointment['appointmentDate'],
-        "status": status,
+        'appointmentId': appointment['appointmentId'],
+        'patientId': appointment['patientId'],
+        'doctorId': appointment['doctorId'],
+        'appointmentDate': appointment['appointmentDate'],
+        'status': status,
       }),
     )
-        .timeout(const Duration(seconds: 20));
+        .timeout(normalTimeout);
 
     if (response.statusCode != 200 && response.statusCode != 204) {
       throw Exception('Failed to update appointment status');
     }
+
+    clearAppointmentsCache();
+    clearNotificationsCache();
   }
 
   static Future<int> getAppointmentCountByUser(int patientId) async {
-    final appointments = await getAppointments();
+    final appointments = await getAllAppointments();
+    final id = patientId.toString();
 
     return appointments.where((appointment) {
-      return appointment['patientId'].toString() == patientId.toString();
+      return appointment['patientId']?.toString() == id ||
+          appointment['PatientId']?.toString() == id;
     }).length;
   }
 
@@ -713,40 +787,49 @@ class ApiService {
       Uri.parse('$baseUrl/Appointments/$appointmentId'),
       headers: headers,
     )
-        .timeout(const Duration(seconds: 20));
+        .timeout(normalTimeout);
 
     if (response.statusCode != 200 && response.statusCode != 204) {
       throw Exception('Failed to delete appointment');
     }
+
+    clearAppointmentsCache();
+    clearNotificationsCache();
   }
 
   static Future<List<dynamic>> getMedicalRecords() async {
-    final response = await http
-        .get(Uri.parse('$baseUrl/MedicalRecords'), headers: headers)
-        .timeout(const Duration(seconds: 20));
+    try {
+      final response = await http
+          .get(medicalRecordsUrl, headers: headers)
+          .timeout(normalTimeout);
 
-    if (response.statusCode == 200) {
-      final data = jsonDecode(response.body);
-      if (data is List) return data;
+      if (response.statusCode == 200) {
+        return decodeList(response.body);
+      }
+
+      return [];
+    } catch (_) {
+      return [];
     }
-
-    return [];
   }
 
   static Future<List<dynamic>> getMedicalRecordsByUser(int patientId) async {
-    final response = await http
-        .get(
-      Uri.parse('$baseUrl/MedicalRecords/patient/$patientId'),
-      headers: headers,
-    )
-        .timeout(const Duration(seconds: 20));
+    try {
+      final response = await http
+          .get(
+        Uri.parse('$baseUrl/MedicalRecords/patient/$patientId'),
+        headers: headers,
+      )
+          .timeout(normalTimeout);
 
-    if (response.statusCode == 200) {
-      final data = jsonDecode(response.body);
-      if (data is List) return data;
+      if (response.statusCode == 200) {
+        return decodeList(response.body);
+      }
+
+      return [];
+    } catch (_) {
+      return [];
     }
-
-    return [];
   }
 
   static Future<void> createMedicalRecord({
@@ -760,19 +843,19 @@ class ApiService {
   }) async {
     final response = await http
         .post(
-      Uri.parse('$baseUrl/MedicalRecords'),
+      medicalRecordsUrl,
       headers: headers,
       body: jsonEncode({
-        "patientId": patientId,
-        "doctorId": doctorId,
-        "title": title,
-        "description": description,
-        "recordDate": recordDate,
-        "status": status,
-        "fileUrl": fileUrl,
+        'patientId': patientId,
+        'doctorId': doctorId,
+        'title': title,
+        'description': description,
+        'recordDate': recordDate,
+        'status': status,
+        'fileUrl': fileUrl,
       }),
     )
-        .timeout(const Duration(seconds: 20));
+        .timeout(normalTimeout);
 
     if (response.statusCode != 200 && response.statusCode != 201) {
       throw Exception('Failed to create medical record');
@@ -802,7 +885,7 @@ class ApiService {
 
     request.files.add(await http.MultipartFile.fromPath('File', filePath));
 
-    final response = await request.send().timeout(const Duration(seconds: 30));
+    final response = await request.send().timeout(uploadTimeout);
 
     if (response.statusCode != 200 && response.statusCode != 201) {
       throw Exception('Failed to upload medical record file');
@@ -815,7 +898,7 @@ class ApiService {
       Uri.parse('$baseUrl/MedicalRecords/$recordId'),
       headers: headers,
     )
-        .timeout(const Duration(seconds: 20));
+        .timeout(normalTimeout);
 
     if (response.statusCode != 200 && response.statusCode != 204) {
       throw Exception('Failed to delete medical record');
@@ -833,32 +916,48 @@ class ApiService {
   }
 
   static Future<int> getAppointmentsCount() async {
-    final response = await http
-        .get(Uri.parse('$baseUrl/Appointments'), headers: headers)
-        .timeout(const Duration(seconds: 20));
-
-    if (response.statusCode == 200) {
-      final data = jsonDecode(response.body);
-      if (data is List) return data.length;
-    }
-
-    return 0;
+    final appointments = await getAllAppointments();
+    return appointments.length;
   }
 
-  static Future<List<dynamic>> getNotificationsByUser(int userId) async {
-    final response = await http
-        .get(
-      Uri.parse('$baseUrl/Notifications/user/$userId'),
-      headers: headers,
-    )
-        .timeout(const Duration(seconds: 20));
-
-    if (response.statusCode == 200) {
-      final data = jsonDecode(response.body);
-      if (data is List) return data;
+  static Future<List<dynamic>> getNotificationsByUser(
+      int userId, {
+        bool forceRefresh = false,
+      }) async {
+    if (!forceRefresh && _notificationsCache.containsKey(userId)) {
+      return _notificationsCache[userId]!;
     }
 
-    return [];
+    if (!forceRefresh && _notificationsRequests.containsKey(userId)) {
+      return _notificationsRequests[userId]!;
+    }
+
+    final request = (() async {
+      try {
+        final response = await http
+            .get(
+          Uri.parse('$baseUrl/Notifications/user/$userId'),
+          headers: headers,
+        )
+            .timeout(normalTimeout);
+
+        if (response.statusCode == 200) {
+          final data = decodeList(response.body);
+          _notificationsCache[userId] = data;
+          return data;
+        }
+
+        _notificationsCache[userId] = [];
+        return [];
+      } catch (_) {
+        return _notificationsCache[userId] ?? [];
+      } finally {
+        _notificationsRequests.remove(userId);
+      }
+    })();
+
+    _notificationsRequests[userId] = request;
+    return request;
   }
 
   static Future<void> deleteNotification(int notificationId) async {
@@ -867,10 +966,12 @@ class ApiService {
       Uri.parse('$baseUrl/Notifications/$notificationId'),
       headers: headers,
     )
-        .timeout(const Duration(seconds: 20));
+        .timeout(normalTimeout);
 
     if (response.statusCode != 200 && response.statusCode != 204) {
       throw Exception('Failed to delete notification');
     }
+
+    clearNotificationsCache();
   }
 }

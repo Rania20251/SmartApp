@@ -17,28 +17,32 @@ class _ManageMedicalRecordsScreenState
   @override
   void initState() {
     super.initState();
-    loadRecords();
-  }
-
-  void loadRecords() {
     recordsFuture = ApiService.getMedicalRecords();
   }
 
   void refreshRecords() {
     setState(() {
-      loadRecords();
+      recordsFuture = ApiService.getMedicalRecords();
     });
   }
 
   Future<void> deleteRecord(int recordId) async {
-    await ApiService.deleteMedicalRecord(recordId);
-    refreshRecords();
+    try {
+      await ApiService.deleteMedicalRecord(recordId);
 
-    if (!mounted) return;
+      if (!mounted) return;
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(AppStrings.recordDeleted)),
-    );
+      refreshRecords();
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(AppStrings.recordDeleted)),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(AppStrings.failedLoadRecords)),
+      );
+    }
   }
 
   Future<void> confirmDelete(int recordId) async {
@@ -113,11 +117,7 @@ class _ManageMedicalRecordsScreenState
             itemCount: records.length,
             itemBuilder: (context, index) {
               final record = records[index];
-
-              final recordId = int.tryParse(
-                record['recordId']?.toString() ?? '0',
-              ) ??
-                  0;
+              final recordId = int.tryParse(record['recordId']?.toString() ?? '0') ?? 0;
 
               return Container(
                 margin: const EdgeInsets.only(bottom: 16),
@@ -131,10 +131,7 @@ class _ManageMedicalRecordsScreenState
                     const CircleAvatar(
                       radius: 30,
                       backgroundColor: Color(0xffEDE7FF),
-                      child: Icon(
-                        Icons.description,
-                        color: primary,
-                      ),
+                      child: Icon(Icons.description, color: primary),
                     ),
                     const SizedBox(width: 14),
                     Expanded(
@@ -142,8 +139,7 @@ class _ManageMedicalRecordsScreenState
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            record['title']?.toString() ??
-                                AppStrings.medicalRecord,
+                            record['title']?.toString() ?? AppStrings.medicalRecord,
                             style: const TextStyle(
                               fontSize: 17,
                               fontWeight: FontWeight.bold,

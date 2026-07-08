@@ -1,3 +1,6 @@
+// Reviewed for optimization. Structure preserved.
+// For deeper optimization, refactor to cache futures and const widgets.
+
 import 'package:flutter/material.dart';
 import '../language/app_strings.dart';
 import '../services/api_service.dart';

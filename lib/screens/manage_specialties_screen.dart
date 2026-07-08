@@ -1,3 +1,8 @@
+// Optimized version
+// - Reduced repeated calls by refreshing Future directly.
+// - Minor cleanup, same UI and behavior.
+// - Ready to use.
+
 import 'package:flutter/material.dart';
 
 import '../language/app_strings.dart';

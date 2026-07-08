@@ -25,6 +25,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   }
 
   void refreshNotifications() {
+    ApiService.clearNotificationsCache();
+
     setState(() {
       loadNotifications();
     });
@@ -32,6 +34,9 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
 
   Future<void> deleteNotification(int notificationId) async {
     await ApiService.deleteNotification(notificationId);
+
+    ApiService.clearNotificationsCache();
+
     refreshNotifications();
 
     if (!mounted) return;
@@ -79,72 +84,75 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xffF7F8FC),
-      appBar: AppBar(
-        title: Text(AppStrings.notifications),
-        backgroundColor: Colors.white,
-        foregroundColor: Colors.black,
-        elevation: 0,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: refreshNotifications,
-          ),
-        ],
-      ),
-      body: FutureBuilder<List<dynamic>>(
-        future: notificationsFuture,
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
+    return Directionality(
+      textDirection: AppStrings.isArabic ? TextDirection.rtl : TextDirection.ltr,
+      child: Scaffold(
+        backgroundColor: const Color(0xffF7F8FC),
+        appBar: AppBar(
+          title: Text(AppStrings.notifications),
+          backgroundColor: Colors.white,
+          foregroundColor: Colors.black,
+          elevation: 0,
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.refresh),
+              onPressed: refreshNotifications,
+            ),
+          ],
+        ),
+        body: FutureBuilder<List<dynamic>>(
+          future: notificationsFuture,
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
+            }
 
-          if (snapshot.hasError) {
-            return Center(
-              child: Text(
-                AppStrings.failedLoadNotifications,
-                style: const TextStyle(color: Colors.red),
-              ),
-            );
-          }
-
-          final notifications = snapshot.data ?? [];
-
-          if (notifications.isEmpty) {
-            return Center(
-              child: Text(AppStrings.noNotificationsYet),
-            );
-          }
-
-          return ListView.builder(
-            padding: const EdgeInsets.all(18),
-            itemCount: notifications.length,
-            itemBuilder: (context, index) {
-              final item = notifications[index];
-
-              final notificationId = int.tryParse(
-                item['notificationId']?.toString() ?? '0',
-              ) ??
-                  0;
-
-              final title = item['title']?.toString() ?? '';
-              final message = item['message']?.toString() ?? '';
-              final createdAt = item['createdAt']?.toString() ?? '';
-
-              return notificationCard(
-                icon: getIcon(title),
-                color: getColor(title),
-                title: title,
-                subtitle: message,
-                date: createdAt,
-                onDelete: () {
-                  deleteNotification(notificationId);
-                },
+            if (snapshot.hasError) {
+              return Center(
+                child: Text(
+                  AppStrings.failedLoadNotifications,
+                  style: const TextStyle(color: Colors.red),
+                ),
               );
-            },
-          );
-        },
+            }
+
+            final notifications = snapshot.data ?? [];
+
+            if (notifications.isEmpty) {
+              return Center(
+                child: Text(AppStrings.noNotificationsYet),
+              );
+            }
+
+            return ListView.builder(
+              padding: const EdgeInsets.all(18),
+              itemCount: notifications.length,
+              itemBuilder: (context, index) {
+                final item = notifications[index];
+
+                final notificationId = int.tryParse(
+                  item['notificationId']?.toString() ?? '0',
+                ) ??
+                    0;
+
+                final title = item['title']?.toString() ?? '';
+                final message = item['message']?.toString() ?? '';
+                final createdAt = item['createdAt']?.toString() ?? '';
+
+                return notificationCard(
+                  icon: getIcon(title),
+                  color: getColor(title),
+                  title: title,
+                  subtitle: message,
+                  date: createdAt,
+                  onDelete: () {
+                    deleteNotification(notificationId);
+                  },
+                );
+              },
+            );
+          },
+        ),
       ),
     );
   }
@@ -173,10 +181,15 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
           const SizedBox(width: 14),
           Expanded(
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+              crossAxisAlignment: AppStrings.isArabic
+                  ? CrossAxisAlignment.end
+                  : CrossAxisAlignment.start,
               children: [
                 Text(
                   title.isEmpty ? AppStrings.notification : title,
+                  textAlign: AppStrings.isArabic
+                      ? TextAlign.right
+                      : TextAlign.left,
                   style: const TextStyle(
                     fontWeight: FontWeight.bold,
                     fontSize: 15,
@@ -185,12 +198,18 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                 const SizedBox(height: 4),
                 Text(
                   subtitle,
+                  textAlign: AppStrings.isArabic
+                      ? TextAlign.right
+                      : TextAlign.left,
                   style: const TextStyle(color: Colors.grey),
                 ),
                 if (date.isNotEmpty) ...[
                   const SizedBox(height: 4),
                   Text(
                     date,
+                    textAlign: AppStrings.isArabic
+                        ? TextAlign.right
+                        : TextAlign.left,
                     style: const TextStyle(
                       color: Colors.grey,
                       fontSize: 11,

@@ -1,3 +1,4 @@
+// Optimized: Past tab now shows only Confirmed appointments.
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -28,7 +29,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
 
   void refreshAppointments() {
     setState(() {
-      loadAppointments();
+      appointmentsFuture = ApiService.getAppointments();
     });
   }
 
@@ -96,7 +97,9 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
   List<dynamic> filteredAppointments(List<dynamic> appointments) {
     final filtered = appointments.where((appointment) {
       final upcoming = isUpcoming(appointment);
-      return showUpcoming ? upcoming : !upcoming;
+      if (showUpcoming) return upcoming;
+      final status = (appointment['status']?.toString().toLowerCase() ?? '');
+      return !upcoming && status == 'confirmed';
     }).toList();
 
     filtered.sort((a, b) {
