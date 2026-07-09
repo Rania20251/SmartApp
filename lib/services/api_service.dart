@@ -1138,6 +1138,19 @@ class ApiService {
     return request;
   }
 
+
+  static Future<int> getNotificationsCountByUser(
+      int userId, {
+        bool forceRefresh = false,
+      }) async {
+    final notifications = await getNotificationsByUser(
+      userId,
+      forceRefresh: forceRefresh,
+    );
+
+    return notifications.length;
+  }
+
   static Future<void> deleteNotification(int notificationId) async {
     final response = await http
         .delete(

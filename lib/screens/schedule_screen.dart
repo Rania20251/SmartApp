@@ -1,6 +1,8 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import '../language/app_strings.dart';
 import '../services/api_service.dart';
 import 'book_appointment_screen.dart';
@@ -13,17 +15,32 @@ class ScheduleScreen extends StatefulWidget {
 }
 
 class _ScheduleScreenState extends State<ScheduleScreen> {
-  List<dynamic> allAppointments = [];
+  static List<dynamic> cachedAppointments = [];
+
+  List<dynamic> allAppointments = List<dynamic>.from(cachedAppointments);
 
   bool showUpcoming = true;
   bool isRefreshing = false;
-  bool firstLoadDone = false;
+  bool firstLoadDone = cachedAppointments.isNotEmpty;
   String? errorMessage;
 
   @override
   void initState() {
     super.initState();
-    loadAppointments(showSmallLoading: true);
+
+    allAppointments = List<dynamic>.from(cachedAppointments);
+
+    if (cachedAppointments.isEmpty) {
+      // أول فتح: لا نعرض "لا يوجد مواعيد" قبل ما يرجع السيرفر
+      loadAppointments(showSmallLoading: true);
+    } else {
+      // بعدها: اعرض الكاش فوراً وحدّث بالخلفية
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          refreshAppointments();
+        }
+      });
+    }
   }
 
   Future<void> loadAppointments({bool showSmallLoading = false}) async {
@@ -32,17 +49,21 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
     if (mounted && showSmallLoading) {
       setState(() {
         isRefreshing = true;
+        firstLoadDone = false;
         errorMessage = null;
       });
     }
 
     try {
-      final data = await ApiService.getAppointments(forceRefresh: false);
+      final data = await ApiService.getAppointments(forceRefresh: true)
+          .timeout(const Duration(seconds: 20));
 
       if (!mounted) return;
 
+      cachedAppointments = List<dynamic>.from(data);
+
       setState(() {
-        allAppointments = data;
+        allAppointments = List<dynamic>.from(cachedAppointments);
         firstLoadDone = true;
         isRefreshing = false;
         errorMessage = null;
@@ -51,11 +72,12 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
       if (!mounted) return;
 
       setState(() {
+        allAppointments = List<dynamic>.from(cachedAppointments);
         firstLoadDone = true;
         isRefreshing = false;
-        if (allAppointments.isEmpty) {
-          errorMessage = AppStrings.failedLoadAppointments;
-        }
+        errorMessage = cachedAppointments.isEmpty
+            ? AppStrings.failedLoadAppointments
+            : null;
       });
     }
   }
@@ -63,18 +85,23 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
   Future<void> refreshAppointments() async {
     if (isRefreshing) return;
 
-    setState(() {
-      isRefreshing = true;
-      errorMessage = null;
-    });
+    if (mounted) {
+      setState(() {
+        isRefreshing = true;
+        errorMessage = null;
+      });
+    }
 
     try {
-      final data = await ApiService.getAppointments(forceRefresh: true);
+      final data = await ApiService.getAppointments(forceRefresh: true)
+          .timeout(const Duration(seconds: 20));
 
       if (!mounted) return;
 
+      cachedAppointments = List<dynamic>.from(data);
+
       setState(() {
-        allAppointments = data;
+        allAppointments = List<dynamic>.from(cachedAppointments);
         firstLoadDone = true;
         isRefreshing = false;
         errorMessage = null;
@@ -83,11 +110,13 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
       if (!mounted) return;
 
       setState(() {
-        isRefreshing = false;
+        // لا نمسح القائمة إذا السيرفر بطّيء أو فشل
+        allAppointments = List<dynamic>.from(cachedAppointments);
         firstLoadDone = true;
-        if (allAppointments.isEmpty) {
-          errorMessage = AppStrings.failedLoadAppointments;
-        }
+        isRefreshing = false;
+        errorMessage = cachedAppointments.isEmpty
+            ? AppStrings.failedLoadAppointments
+            : null;
       });
     }
   }
@@ -159,19 +188,40 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
     return fallback;
   }
 
+  String normalizedStatus(dynamic appointment) {
+    return valueOf(
+      appointment,
+      ['status', 'Status'],
+      '',
+    ).trim().toLowerCase();
+  }
+
+  bool isConfirmedStatus(String status) {
+    return status == 'confirmed' ||
+        status == 'confirm' ||
+        status == 'مؤكد' ||
+        status == 'تم التأكيد';
+  }
+
+  bool isPendingStatus(String status) {
+    return status == 'pending' ||
+        status == 'upcoming' ||
+        status == 'قادم' ||
+        status == 'قيد الانتظار' ||
+        status.isEmpty;
+  }
+
   List<dynamic> filteredAppointments(List<dynamic> appointments) {
     final filtered = appointments.where((appointment) {
-      final status = valueOf(
-        appointment,
-        ['status', 'Status'],
-        '',
-      ).toLowerCase();
+      final status = normalizedStatus(appointment);
 
       if (showUpcoming) {
-        return status == 'pending' || status == 'upcoming' || status.isEmpty;
+        // Upcoming يظهر فيه غير المؤكد فقط
+        return isPendingStatus(status) && !isConfirmedStatus(status);
       }
 
-      return status == 'confirmed';
+      // Past يظهر فيه المؤكد فقط
+      return isConfirmedStatus(status);
     }).toList();
 
     filtered.sort((a, b) {
@@ -183,7 +233,8 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
         valueOf(b, ['appointmentDate', 'AppointmentDate'], ''),
       );
 
-      return showUpcoming ? dateA.compareTo(dateB) : dateB.compareTo(dateA);
+      // الأحدث أولاً
+      return dateB.compareTo(dateA);
     });
 
     return filtered;
@@ -254,6 +305,28 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
     );
   }
 
+
+  void removeAppointmentLocal(int appointmentId) {
+    cachedAppointments = cachedAppointments.where((appointment) {
+      final id = int.tryParse(
+        valueOf(
+          appointment,
+          ['appointmentId', 'AppointmentId'],
+          '0',
+        ),
+      ) ??
+          0;
+
+      return id != appointmentId;
+    }).toList();
+
+    setState(() {
+      allAppointments = List<dynamic>.from(cachedAppointments);
+    });
+
+    ApiService.resetAppointmentsCache();
+  }
+
   @override
   Widget build(BuildContext context) {
     const primary = Color(0xff5B2EFF);
@@ -298,6 +371,9 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
                       borderRadius: BorderRadius.circular(18),
                     ),
                     child: Row(
+                      textDirection: AppStrings.isArabic
+                          ? TextDirection.rtl
+                          : TextDirection.ltr,
                       children: [
                         Expanded(
                           child: tabButton(
@@ -350,7 +426,16 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
                             '',
                           ),
                         ),
-                        onDeleted: refreshAppointments,
+                        onDeleted: () => removeAppointmentLocal(
+                          int.tryParse(
+                            valueOf(
+                              appointment,
+                              ['appointmentId', 'AppointmentId'],
+                              '0',
+                            ),
+                          ) ??
+                              0,
+                        ),
                       );
                     }),
                 ],
@@ -371,9 +456,8 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
 
             if (booked == true) {
               ApiService.resetAppointmentsCache();
+              await refreshAppointments();
             }
-
-            refreshAppointments();
           },
           child: const Icon(Icons.add),
         ),
@@ -469,12 +553,14 @@ class AppointmentCard extends StatelessWidget {
 
     if (image.startsWith('http://') || image.startsWith('https://')) {
       return ClipOval(
-        child: Image.network(
-          image,
+        child: CachedNetworkImage(
+          imageUrl: image,
           width: 56,
           height: 56,
           fit: BoxFit.cover,
-          errorBuilder: (_, __, ___) => defaultDoctorImage(),
+          fadeInDuration: Duration.zero,
+          placeholder: (_, __) => defaultDoctorImage(),
+          errorWidget: (_, __, ___) => defaultDoctorImage(),
         ),
       );
     }
@@ -674,28 +760,32 @@ class AppointmentCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(22),
       ),
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        textDirection: AppStrings.isArabic ? TextDirection.rtl : TextDirection.ltr,
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           SizedBox(
-            width: 56,
-            height: 56,
+            width: 58,
+            height: 58,
             child: doctorImage(imagePath),
           ),
-          const SizedBox(width: 14),
+          const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: AppStrings.isArabic
-                  ? CrossAxisAlignment.end
+                  ? CrossAxisAlignment.start
                   : CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
                   shownDoctorName,
                   textDirection:
                   AppStrings.isArabic ? TextDirection.rtl : TextDirection.ltr,
+                  textAlign: AppStrings.isArabic ? TextAlign.right : TextAlign.left,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
                     fontSize: 16,
+                    height: 1.15,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
@@ -704,52 +794,74 @@ class AppointmentCard extends StatelessWidget {
                   shownSpecialty,
                   textDirection:
                   AppStrings.isArabic ? TextDirection.rtl : TextDirection.ltr,
+                  textAlign: AppStrings.isArabic ? TextAlign.right : TextAlign.left,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(color: Colors.grey),
+                  style: const TextStyle(
+                    color: Colors.grey,
+                    fontSize: 13,
+                  ),
                 ),
                 const SizedBox(height: 8),
-                Row(
-                  mainAxisAlignment: AppStrings.isArabic
-                      ? MainAxisAlignment.end
-                      : MainAxisAlignment.start,
-                  children: [
-                    const Icon(
-                      Icons.calendar_month,
-                      size: 15,
-                      color: Colors.grey,
-                    ),
-                    const SizedBox(width: 5),
-                    Text(date, style: const TextStyle(fontSize: 12)),
-                  ],
-                ),
-                const SizedBox(height: 5),
-                Row(
-                  mainAxisAlignment: AppStrings.isArabic
-                      ? MainAxisAlignment.end
-                      : MainAxisAlignment.start,
-                  children: [
-                    const Icon(
-                      Icons.access_time,
-                      size: 15,
-                      color: Colors.grey,
-                    ),
-                    const SizedBox(width: 5),
-                    Text(time, style: const TextStyle(fontSize: 12)),
-                  ],
+                Directionality(
+                  textDirection: AppStrings.isArabic
+                      ? TextDirection.rtl
+                      : TextDirection.ltr,
+                  child: Wrap(
+                    spacing: 10,
+                    runSpacing: 6,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(
+                            Icons.calendar_month,
+                            size: 15,
+                            color: Colors.grey,
+                          ),
+                          const SizedBox(width: 5),
+                          Text(
+                            date,
+                            textDirection: TextDirection.ltr,
+                            style: const TextStyle(fontSize: 12),
+                          ),
+                        ],
+                      ),
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(
+                            Icons.access_time,
+                            size: 15,
+                            color: Colors.grey,
+                          ),
+                          const SizedBox(width: 5),
+                          Text(
+                            time,
+                            textDirection: TextDirection.ltr,
+                            style: const TextStyle(fontSize: 12),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
               ],
             ),
           ),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              PopupMenuButton<String>(
-                icon: const Icon(Icons.more_vert),
-                onSelected: (value) async {
-                  if (value == 'delete') {
-                    try {
-                      await ApiService.deleteAppointment(appointmentId);
+          const SizedBox(width: 6),
+          SizedBox(
+            width: 82,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                PopupMenuButton<String>(
+                  padding: EdgeInsets.zero,
+                  icon: const Icon(Icons.more_vert),
+                  onSelected: (value) async {
+                    if (value == 'delete') {
                       onDeleted();
 
                       ScaffoldMessenger.of(context).showSnackBar(
@@ -757,44 +869,61 @@ class AppointmentCard extends StatelessWidget {
                           content: Text(AppStrings.appointmentDeleted),
                         ),
                       );
-                    } catch (_) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(AppStrings.deleteAppointmentFailed),
-                        ),
-                      );
+
+                      try {
+                        await ApiService.deleteAppointment(appointmentId);
+                        ApiService.resetAppointmentsCache();
+                      } catch (_) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(AppStrings.deleteAppointmentFailed),
+                          ),
+                        );
+                      }
                     }
-                  }
-                },
-                itemBuilder: (context) => [
-                  PopupMenuItem(
-                    value: 'delete',
-                    child: Text(AppStrings.delete),
+                  },
+                  itemBuilder: (context) => [
+                    PopupMenuItem(
+                      value: 'delete',
+                      child: Text(AppStrings.delete),
+                    ),
+                  ],
+                ),
+                Container(
+                  constraints: const BoxConstraints(
+                    minWidth: 68,
+                    maxWidth: 78,
                   ),
-                ],
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 5,
-                ),
-                decoration: BoxDecoration(
-                  color: primary.withOpacity(.10),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Text(
-                  statusText(status),
-                  style: const TextStyle(
-                    color: primary,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 11,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: primary.withOpacity(.10),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text(
+                      statusText(status),
+                      maxLines: 1,
+                      softWrap: false,
+                      overflow: TextOverflow.visible,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        color: primary,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 11,
+                      ),
+                    ),
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ],
       ),
     );
   }
 }
+

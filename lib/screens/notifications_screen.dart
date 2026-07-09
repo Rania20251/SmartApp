@@ -46,6 +46,73 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     );
   }
 
+  String translateNotificationTitle(String title) {
+    if (!AppStrings.isArabic) return title.isEmpty ? AppStrings.notification : title;
+
+    final value = title.toLowerCase().trim();
+
+    if (value.contains('appointment') && value.contains('book')) {
+      return 'تم حجز موعد';
+    }
+
+    if (value.contains('appointment') && value.contains('confirm')) {
+      return 'تم تأكيد الموعد';
+    }
+
+    if (value.contains('appointment') && value.contains('complete')) {
+      return 'تم إكمال الموعد';
+    }
+
+    if (value.contains('appointment') && value.contains('cancel')) {
+      return 'تم إلغاء الموعد';
+    }
+
+    if (value.contains('appointment') && value.contains('update')) {
+      return 'تم تحديث الموعد';
+    }
+
+    if (value.contains('medical')) {
+      return 'السجل الطبي';
+    }
+
+    if (value.contains('deleted')) {
+      return 'تم الحذف';
+    }
+
+    if (title.trim().isEmpty) return AppStrings.notification;
+
+    return title
+        .replaceAll(RegExp(r'Appointment', caseSensitive: false), 'الموعد')
+        .replaceAll(RegExp(r'Booked', caseSensitive: false), 'تم حجزه')
+        .replaceAll(RegExp(r'Updated', caseSensitive: false), 'تم تحديثه')
+        .replaceAll(RegExp(r'Deleted', caseSensitive: false), 'تم حذفه')
+        .replaceAll(RegExp(r'Confirmed', caseSensitive: false), 'تم تأكيده')
+        .replaceAll(RegExp(r'Completed', caseSensitive: false), 'تم إكماله')
+        .replaceAll(RegExp(r'Cancelled', caseSensitive: false), 'تم إلغاؤه')
+        .replaceAll(RegExp(r'Medical', caseSensitive: false), 'طبي');
+  }
+
+  String translateNotificationMessage(String message) {
+    if (!AppStrings.isArabic) return message;
+
+    return message
+        .replaceAll(RegExp(r'appointment', caseSensitive: false), 'الموعد')
+        .replaceAll(RegExp(r'booked', caseSensitive: false), 'تم حجزه')
+        .replaceAll(RegExp(r'updated', caseSensitive: false), 'تم تحديثه')
+        .replaceAll(RegExp(r'deleted', caseSensitive: false), 'تم حذفه')
+        .replaceAll(RegExp(r'confirmed', caseSensitive: false), 'تم تأكيده')
+        .replaceAll(RegExp(r'completed', caseSensitive: false), 'تم إكماله')
+        .replaceAll(RegExp(r'cancelled', caseSensitive: false), 'تم إلغاؤه')
+        .replaceAll(RegExp(r'Dr\.', caseSensitive: false), 'د.')
+        .replaceAll('Ahmad', 'أحمد')
+        .replaceAll('Ahmed', 'أحمد')
+        .replaceAll('Ali', 'علي')
+        .replaceAll('Sarah', 'سارة')
+        .replaceAll('Sara', 'سارة')
+        .replaceAll('Mohammad', 'محمد')
+        .replaceAll('Mohammed', 'محمد');
+  }
+
   IconData getIcon(String title) {
     final lowerTitle = title.toLowerCase();
 
@@ -71,11 +138,13 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       return const Color(0xff5B2EFF);
     }
 
-    if (lowerTitle.contains('updated')) {
+    if (lowerTitle.contains('updated') ||
+        lowerTitle.contains('confirmed') ||
+        lowerTitle.contains('completed')) {
       return Colors.green;
     }
 
-    if (lowerTitle.contains('deleted')) {
+    if (lowerTitle.contains('deleted') || lowerTitle.contains('cancelled')) {
       return Colors.red;
     }
 
@@ -131,19 +200,29 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                 final item = notifications[index];
 
                 final notificationId = int.tryParse(
-                  item['notificationId']?.toString() ?? '0',
+                  item['notificationId']?.toString() ??
+                      item['NotificationId']?.toString() ??
+                      '0',
                 ) ??
                     0;
 
-                final title = item['title']?.toString() ?? '';
-                final message = item['message']?.toString() ?? '';
-                final createdAt = item['createdAt']?.toString() ?? '';
+                final title = item['title']?.toString() ??
+                    item['Title']?.toString() ??
+                    '';
+
+                final message = item['message']?.toString() ??
+                    item['Message']?.toString() ??
+                    '';
+
+                final createdAt = item['createdAt']?.toString() ??
+                    item['CreatedAt']?.toString() ??
+                    '';
 
                 return notificationCard(
                   icon: getIcon(title),
                   color: getColor(title),
-                  title: title,
-                  subtitle: message,
+                  title: translateNotificationTitle(title),
+                  subtitle: translateNotificationMessage(message),
                   date: createdAt,
                   onDelete: () {
                     deleteNotification(notificationId);
@@ -173,6 +252,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         borderRadius: BorderRadius.circular(20),
       ),
       child: Row(
+        textDirection: AppStrings.isArabic ? TextDirection.rtl : TextDirection.ltr,
         children: [
           CircleAvatar(
             backgroundColor: color.withOpacity(.15),
@@ -181,15 +261,17 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
           const SizedBox(width: 14),
           Expanded(
             child: Column(
-              crossAxisAlignment: AppStrings.isArabic
-                  ? CrossAxisAlignment.end
-                  : CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   title.isEmpty ? AppStrings.notification : title,
+                  textDirection:
+                  AppStrings.isArabic ? TextDirection.rtl : TextDirection.ltr,
                   textAlign: AppStrings.isArabic
                       ? TextAlign.right
                       : TextAlign.left,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
                     fontWeight: FontWeight.bold,
                     fontSize: 15,
@@ -198,15 +280,20 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                 const SizedBox(height: 4),
                 Text(
                   subtitle,
+                  textDirection:
+                  AppStrings.isArabic ? TextDirection.rtl : TextDirection.ltr,
                   textAlign: AppStrings.isArabic
                       ? TextAlign.right
                       : TextAlign.left,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
                   style: const TextStyle(color: Colors.grey),
                 ),
                 if (date.isNotEmpty) ...[
                   const SizedBox(height: 4),
                   Text(
                     date,
+                    textDirection: TextDirection.ltr,
                     textAlign: AppStrings.isArabic
                         ? TextAlign.right
                         : TextAlign.left,

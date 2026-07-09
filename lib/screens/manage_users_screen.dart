@@ -26,6 +26,46 @@ class _ManageUsersScreenState extends State<ManageUsersScreen> {
     });
   }
 
+  String translateUserName(String name) {
+    if (!AppStrings.isArabic) return name;
+
+    final clean = name.trim();
+
+    if (clean.isEmpty) return AppStrings.noName;
+
+    return clean
+        .replaceAll(RegExp(r'\bHana\b', caseSensitive: false), 'هناء')
+        .replaceAll(RegExp(r'\bHala\b', caseSensitive: false), 'هالة')
+        .replaceAll(RegExp(r'\bRana\b', caseSensitive: false), 'رنا')
+        .replaceAll(RegExp(r'\bRania\b', caseSensitive: false), 'رانيا')
+        .replaceAll(RegExp(r'\bRamia\b', caseSensitive: false), 'راميا')
+        .replaceAll(RegExp(r'\bSalah\b', caseSensitive: false), 'صلاح')
+        .replaceAll(RegExp(r'\bSarah\b', caseSensitive: false), 'سارة')
+        .replaceAll(RegExp(r'\bSara\b', caseSensitive: false), 'سارة')
+        .replaceAll(RegExp(r'\bAhmad\b', caseSensitive: false), 'أحمد')
+        .replaceAll(RegExp(r'\bAhmed\b', caseSensitive: false), 'أحمد')
+        .replaceAll(RegExp(r'\bAli\b', caseSensitive: false), 'علي')
+        .replaceAll(RegExp(r'\bMohammad\b', caseSensitive: false), 'محمد')
+        .replaceAll(RegExp(r'\bMohammed\b', caseSensitive: false), 'محمد')
+        .replaceAll(RegExp(r'\bOmar\b', caseSensitive: false), 'عمر')
+        .replaceAll(RegExp(r'\bNour\b', caseSensitive: false), 'نور')
+        .replaceAll(RegExp(r'\bAdnan\b', caseSensitive: false), 'عدنان')
+        .replaceAll(RegExp(r'\bOsama\b', caseSensitive: false), 'أسامة')
+        .replaceAll(RegExp(r'\bMurad\b', caseSensitive: false), 'مراد')
+        .replaceAll(RegExp(r'\bAya\b', caseSensitive: false), 'آية')
+        .replaceAll(RegExp(r'\bNoor\b', caseSensitive: false), 'نور')
+        .replaceAll(RegExp(r'\bLina\b', caseSensitive: false), 'لينا')
+        .replaceAll(RegExp(r'\bYara\b', caseSensitive: false), 'يارا')
+        .replaceAll(RegExp(r'\bMona\b', caseSensitive: false), 'منى')
+        .replaceAll(RegExp(r'\bHuda\b', caseSensitive: false), 'هدى')
+        .replaceAll(RegExp(r'\bKhaled\b', caseSensitive: false), 'خالد')
+        .replaceAll(RegExp(r'\bKhalid\b', caseSensitive: false), 'خالد')
+        .replaceAll(RegExp(r'\bYousef\b', caseSensitive: false), 'يوسف')
+        .replaceAll(RegExp(r'\bYusuf\b', caseSensitive: false), 'يوسف')
+        .replaceAll(RegExp(r'\bMariam\b', caseSensitive: false), 'مريم')
+        .replaceAll(RegExp(r'\bMaryam\b', caseSensitive: false), 'مريم');
+  }
+
   String getUserImage(dynamic user) {
     final image = user['profileImage']?.toString().trim() ??
         user['ProfileImage']?.toString().trim() ??
@@ -104,13 +144,25 @@ class _ManageUsersScreenState extends State<ManageUsersScreen> {
   Future<void> confirmDelete(int userId) async {
     final ok = await showDialog<bool>(
       context: context,
-      builder: (_) => AlertDialog(
-        title: Text(AppStrings.deleteUser),
-        content: Text(AppStrings.deleteUserConfirm),
-        actions: [
-          TextButton(onPressed: ()=>Navigator.pop(context,false), child: Text(AppStrings.cancel)),
-          TextButton(onPressed: ()=>Navigator.pop(context,true), child: Text(AppStrings.delete,style: const TextStyle(color: Colors.red))),
-        ],
+      builder: (_) => Directionality(
+        textDirection: AppStrings.isArabic ? TextDirection.rtl : TextDirection.ltr,
+        child: AlertDialog(
+          title: Text(AppStrings.deleteUser),
+          content: Text(AppStrings.deleteUserConfirm),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: Text(AppStrings.cancel),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: Text(
+                AppStrings.delete,
+                style: const TextStyle(color: Colors.red),
+              ),
+            ),
+          ],
+        ),
       ),
     );
 
@@ -131,7 +183,10 @@ class _ManageUsersScreenState extends State<ManageUsersScreen> {
           foregroundColor: Colors.black,
           elevation: 0,
           actions: [
-            IconButton(icon: const Icon(Icons.refresh), onPressed: refreshUsers),
+            IconButton(
+              icon: const Icon(Icons.refresh),
+              onPressed: refreshUsers,
+            ),
           ],
         ),
         body: FutureBuilder<List<dynamic>>(
@@ -140,45 +195,113 @@ class _ManageUsersScreenState extends State<ManageUsersScreen> {
             if (snapshot.connectionState == ConnectionState.waiting) {
               return const Center(child: CircularProgressIndicator());
             }
+
             if (snapshot.hasError) {
-              return Center(child: Text(AppStrings.failedLoadUsers, style: const TextStyle(color: Colors.red)));
+              return Center(
+                child: Text(
+                  AppStrings.failedLoadUsers,
+                  style: const TextStyle(color: Colors.red),
+                ),
+              );
             }
+
             final users = snapshot.data ?? [];
+
             if (users.isEmpty) {
               return Center(child: Text(AppStrings.noUsersFound));
             }
+
             return ListView.builder(
               padding: const EdgeInsets.all(18),
               itemCount: users.length,
-              itemBuilder: (context,index){
-                final user=users[index];
-                final id=int.tryParse('${user['userId']??user['UserId']??0}')??0;
-                final full='${user['fullName']??user['FullName']??AppStrings.noName}';
-                final email='${user['email']??user['Email']??AppStrings.noEmail}';
-                final phone='${user['phoneNumber']??user['PhoneNumber']??''}';
+              itemBuilder: (context, index) {
+                final user = users[index];
+
+                final id = int.tryParse(
+                  '${user['userId'] ?? user['UserId'] ?? 0}',
+                ) ??
+                    0;
+
+                final full = translateUserName(
+                  '${user['fullName'] ?? user['FullName'] ?? AppStrings.noName}',
+                );
+
+                final email =
+                    '${user['email'] ?? user['Email'] ?? AppStrings.noEmail}';
+
+                final phone =
+                    '${user['phoneNumber'] ?? user['PhoneNumber'] ?? ''}';
+
                 return Container(
-                  margin: const EdgeInsets.only(bottom:16),
+                  margin: const EdgeInsets.only(bottom: 16),
                   padding: const EdgeInsets.all(18),
-                  decoration: BoxDecoration(color: Colors.white,borderRadius: BorderRadius.circular(22)),
-                  child: Row(children:[
-                    SizedBox(width:60,height:60,child:userImage(getUserImage(user))),
-                    const SizedBox(width:14),
-                    Expanded(child:Column(
-                      crossAxisAlignment: AppStrings.isArabic?CrossAxisAlignment.end:CrossAxisAlignment.start,
-                      children:[
-                        Text(full,maxLines:1,overflow:TextOverflow.ellipsis,style: const TextStyle(fontSize:17,fontWeight:FontWeight.bold)),
-                        const SizedBox(height:4),
-                        Text(email,maxLines:1,overflow:TextOverflow.ellipsis,style: const TextStyle(color: Colors.grey)),
-                        if(phone.isNotEmpty)...[
-                          const SizedBox(height:4),
-                          Text(phone,style: const TextStyle(fontSize:12))
-                        ],
-                        const SizedBox(height:4),
-                        Text('${AppStrings.userId}: $id',style: const TextStyle(fontSize:12))
-                      ],
-                    )),
-                    IconButton(icon: const Icon(Icons.delete,color: Colors.red),onPressed: ()=>confirmDelete(id))
-                  ]),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(22),
+                  ),
+                  child: Row(
+                    textDirection:
+                    AppStrings.isArabic ? TextDirection.rtl : TextDirection.ltr,
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      SizedBox(
+                        width: 60,
+                        height: 60,
+                        child: userImage(getUserImage(user)),
+                      ),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              full,
+                              textDirection: AppStrings.isArabic
+                                  ? TextDirection.rtl
+                                  : TextDirection.ltr,
+                              textAlign: AppStrings.isArabic
+                                  ? TextAlign.right
+                                  : TextAlign.left,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 17,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              email,
+                              textDirection: TextDirection.ltr,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(color: Colors.grey),
+                            ),
+                            if (phone.isNotEmpty) ...[
+                              const SizedBox(height: 4),
+                              Text(
+                                phone,
+                                textDirection: TextDirection.ltr,
+                                style: const TextStyle(fontSize: 12),
+                              ),
+                            ],
+                            const SizedBox(height: 4),
+                            Text(
+                              '${AppStrings.userId}: $id',
+                              textDirection: AppStrings.isArabic
+                                  ? TextDirection.rtl
+                                  : TextDirection.ltr,
+                              style: const TextStyle(fontSize: 12),
+                            ),
+                          ],
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.delete, color: Colors.red),
+                        onPressed: () => confirmDelete(id),
+                      ),
+                    ],
+                  ),
                 );
               },
             );

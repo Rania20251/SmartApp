@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:image_picker/image_picker.dart';
 import '../language/app_strings.dart';
 import '../services/api_service.dart';
@@ -41,8 +42,8 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
-    doctorsFuture = ApiService.getDoctors();
-    specialtiesFuture = ApiService.getSpecialties();
+    doctorsFuture = ApiService.getDoctors(forceRefresh: true);
+    specialtiesFuture = ApiService.getSpecialties(forceRefresh: true);
     loadBanners();
   }
 
@@ -135,8 +136,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
     final picked = await picker.pickImage(
       source: ImageSource.gallery,
-      imageQuality: 75,
-      maxWidth: 1200,
+      imageQuality: 55,
+      maxWidth: 900,
     );
 
     if (picked == null) return;
@@ -324,7 +325,22 @@ class _HomeScreenState extends State<HomeScreen> {
                 bannerIndexNotifier.value = index;
               },
               itemBuilder: (context, index) {
-                final provider = bannerImageProvider(images[index]);
+                final image = images[index].trim();
+
+                if (image.startsWith('http://') || image.startsWith('https://')) {
+                  return CachedNetworkImage(
+                    imageUrl: image,
+                    fit: BoxFit.cover,
+                    width: double.infinity,
+                    height: 190,
+                    fadeInDuration: Duration.zero,
+                    memCacheWidth: 900,
+                    placeholder: (_, __) => defaultBanner(),
+                    errorWidget: (_, __, ___) => defaultBanner(),
+                  );
+                }
+
+                final provider = bannerImageProvider(image);
 
                 if (provider == null) return defaultBanner();
 
@@ -441,7 +457,7 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     if (image.startsWith('http://') || image.startsWith('https://')) {
-      return NetworkImage(image);
+      return CachedNetworkImageProvider(image);
     }
 
     if (image.startsWith('assets/')) {
@@ -586,9 +602,12 @@ class _HomeScreenState extends State<HomeScreen> {
               child: ListView(
                 children: [
                   Row(
+                    textDirection:
+                    AppStrings.isArabic ? TextDirection.rtl : TextDirection.ltr,
                     children: [
                       const Text(
                         'MedLink',
+                        textAlign: TextAlign.start,
                         style: TextStyle(
                           fontSize: 28,
                           fontWeight: FontWeight.bold,
@@ -892,7 +911,7 @@ class SpecialtyCard extends StatelessWidget {
   }
 }
 
-class DoctorCard extends StatelessWidget {
+class DoctorCard extends StatefulWidget {
   final String name;
   final String specialty;
   final String rating;
@@ -910,8 +929,15 @@ class DoctorCard extends StatelessWidget {
     required this.imagePath,
   });
 
+  @override
+  State<DoctorCard> createState() => _DoctorCardState();
+}
+
+class _DoctorCardState extends State<DoctorCard> {
+  bool isBooking = false;
+
   Widget doctorImage() {
-    final image = imagePath.trim();
+    final image = widget.imagePath.trim();
 
     if (image.startsWith('data:image')) {
       try {
@@ -932,13 +958,15 @@ class DoctorCard extends StatelessWidget {
 
     if (image.startsWith('http://') || image.startsWith('https://')) {
       return ClipOval(
-        child: Image.network(
-          image,
+        child: CachedNetworkImage(
+          imageUrl: image,
           key: ValueKey(image),
           width: 60,
           height: 60,
           fit: BoxFit.cover,
-          errorBuilder: (_, __, ___) => defaultImage(),
+          fadeInDuration: Duration.zero,
+          placeholder: (_, __) => defaultImage(),
+          errorWidget: (_, __, ___) => defaultImage(),
         ),
       );
     }
@@ -980,12 +1008,12 @@ class DoctorCard extends StatelessWidget {
           context,
           MaterialPageRoute(
             builder: (_) => DoctorDetailsScreen(
-              doctorId: doctorId,
-              name: name,
-              specialty: specialty,
-              rating: rating,
-              time: time,
-              imagePath: imagePath,
+              doctorId: widget.doctorId,
+              name: widget.name,
+              specialty: widget.specialty,
+              rating: widget.rating,
+              time: widget.time,
+              imagePath: widget.imagePath,
             ),
           ),
         );
@@ -998,81 +1026,111 @@ class DoctorCard extends StatelessWidget {
           borderRadius: BorderRadius.circular(20),
         ),
         child: Row(
+          textDirection: AppStrings.isArabic ? TextDirection.rtl : TextDirection.ltr,
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             SizedBox(
               width: 60,
               height: 60,
               child: doctorImage(),
             ),
-            const SizedBox(width: 14),
+            const SizedBox(width: 12),
             Expanded(
-              child: Column(
-                crossAxisAlignment: AppStrings.isArabic
-                    ? CrossAxisAlignment.end
-                    : CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    name,
-                    textAlign:
-                    AppStrings.isArabic ? TextAlign.right : TextAlign.left,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    specialty,
-                    textAlign:
-                    AppStrings.isArabic ? TextAlign.right : TextAlign.left,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(color: Colors.grey),
-                  ),
-                  const SizedBox(height: 8),
-                  Row(
-                    mainAxisAlignment: AppStrings.isArabic
-                        ? MainAxisAlignment.end
-                        : MainAxisAlignment.start,
-                    children: [
-                      const Icon(Icons.star, color: Colors.orange, size: 16),
-                      Text(' $rating'),
-                      const SizedBox(width: 14),
-                      const Icon(
-                        Icons.access_time,
-                        size: 16,
-                        color: Colors.grey,
+              child: Align(
+                alignment: AppStrings.isArabic
+                    ? Alignment.centerRight
+                    : Alignment.centerLeft,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: AppStrings.isArabic
+                      ? CrossAxisAlignment.start
+                      : CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      widget.name,
+                      textDirection:
+                      AppStrings.isArabic ? TextDirection.rtl : TextDirection.ltr,
+                      textAlign:
+                      AppStrings.isArabic ? TextAlign.right : TextAlign.left,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        height: 1.15,
+                        fontWeight: FontWeight.bold,
                       ),
-                      Text(' $time'),
-                    ],
-                  ),
-                ],
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      widget.specialty,
+                      textDirection:
+                      AppStrings.isArabic ? TextDirection.rtl : TextDirection.ltr,
+                      textAlign:
+                      AppStrings.isArabic ? TextAlign.right : TextAlign.left,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(color: Colors.grey),
+                    ),
+                    const SizedBox(height: 8),
+                    Directionality(
+                      textDirection: TextDirection.ltr,
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.star, color: Colors.orange, size: 16),
+                          Text(' ${widget.rating}'),
+                          const SizedBox(width: 12),
+                          const Icon(
+                            Icons.access_time,
+                            size: 16,
+                            color: Colors.grey,
+                          ),
+                          Text(' ${widget.time}'),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
-            const SizedBox(width: 18),
+            const SizedBox(width: 10),
             SizedBox(
               width: 74,
               height: 38,
               child: ElevatedButton(
-                onPressed: () async {
+                onPressed: isBooking
+                    ? null
+                    : () async {
+                  if (isBooking) return;
+
+                  setState(() => isBooking = true);
+
                   try {
                     await ApiService.bookAppointment(
                       patientId: UserSession.userId ?? 1,
-                      doctorId: doctorId,
+                      doctorId: widget.doctorId,
                       appointmentDate: DateTime.now().add(
                         const Duration(days: 1),
                       ),
                     );
 
+                    ApiService.resetAppointmentsCache();
+
+                    if (!mounted) return;
+
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(content: Text(AppStrings.appointmentBooked)),
                     );
-                  } catch (e) {
+                  } catch (_) {
+                    if (!mounted) return;
+
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(content: Text(AppStrings.appointmentFailed)),
                     );
+                  } finally {
+                    if (mounted) {
+                      setState(() => isBooking = false);
+                    }
                   }
                 },
                 style: ElevatedButton.styleFrom(
@@ -1083,7 +1141,16 @@ class DoctorCard extends StatelessWidget {
                     borderRadius: BorderRadius.circular(12),
                   ),
                 ),
-                child: Text(AppStrings.book),
+                child: isBooking
+                    ? const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(
+                    color: Colors.white,
+                    strokeWidth: 2,
+                  ),
+                )
+                    : Text(AppStrings.book),
               ),
             ),
           ],

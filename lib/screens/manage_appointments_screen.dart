@@ -16,17 +16,30 @@ class _ManageAppointmentsScreenState extends State<ManageAppointmentsScreen> {
   static const Color primary = Color(0xff5B2EFF);
   static const Color background = Color(0xffF7F8FC);
 
-  bool firstLoadDone = false;
+  static List<dynamic> cachedAdminAppointments = [];
+
+  bool firstLoadDone = cachedAdminAppointments.isNotEmpty;
   bool isRefreshing = false;
   String? errorMessage;
 
-  List<dynamic> appointments = [];
+  List<dynamic> appointments = List<dynamic>.from(cachedAdminAppointments);
   final Set<String> updatingIds = {};
 
   @override
   void initState() {
     super.initState();
-    loadAppointments(firstLoad: true);
+
+    appointments = List<dynamic>.from(cachedAdminAppointments);
+
+    if (cachedAdminAppointments.isEmpty) {
+      loadAppointments(firstLoad: true);
+    } else {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          refreshAppointments();
+        }
+      });
+    }
   }
 
   Future<void> loadAppointments({bool firstLoad = false}) async {
@@ -40,8 +53,8 @@ class _ManageAppointmentsScreenState extends State<ManageAppointmentsScreen> {
     }
 
     try {
-      final data = await ApiService.getAllAppointments(forceRefresh: false)
-          .timeout(const Duration(seconds: 12));
+      final data = await ApiService.getAllAppointments(forceRefresh: true)
+          .timeout(const Duration(seconds: 15));
 
       data.sort((a, b) {
         final dateA =
@@ -53,8 +66,10 @@ class _ManageAppointmentsScreenState extends State<ManageAppointmentsScreen> {
 
       if (!mounted) return;
 
+      cachedAdminAppointments = List<dynamic>.from(data);
+
       setState(() {
-        appointments = data;
+        appointments = List<dynamic>.from(cachedAdminAppointments);
         firstLoadDone = true;
         isRefreshing = false;
         errorMessage = null;
@@ -63,21 +78,23 @@ class _ManageAppointmentsScreenState extends State<ManageAppointmentsScreen> {
       if (!mounted) return;
 
       setState(() {
+        appointments = List<dynamic>.from(cachedAdminAppointments);
         firstLoadDone = true;
         isRefreshing = false;
-        if (appointments.isEmpty) {
-          errorMessage = AppStrings.failedLoadAppointments;
-        }
+        errorMessage = appointments.isEmpty
+            ? AppStrings.failedLoadAppointments
+            : null;
       });
     } catch (_) {
       if (!mounted) return;
 
       setState(() {
+        appointments = List<dynamic>.from(cachedAdminAppointments);
         firstLoadDone = true;
         isRefreshing = false;
-        if (appointments.isEmpty) {
-          errorMessage = AppStrings.failedLoadAppointments;
-        }
+        errorMessage = appointments.isEmpty
+            ? AppStrings.failedLoadAppointments
+            : null;
       });
     }
   }
@@ -158,51 +175,58 @@ class _ManageAppointmentsScreenState extends State<ManageAppointmentsScreen> {
       current['status'] = status;
       current['Status'] = status;
     }
+
+    cachedAdminAppointments = List<dynamic>.from(appointments);
+
+    // يربط التحديث مع شاشة المريض Schedule/Profile
+    ApiService.resetAppointmentsCache();
   }
 
-  Future<void> updateStatus(
+  void updateStatus(
       Map<String, dynamic> appointment,
       String status,
-      ) async {
+      ) {
     final id = appointmentKey(appointment);
 
     if (updatingIds.contains(id)) return;
 
     final oldStatus = valueOf(appointment, ['status', 'Status'], 'Pending');
 
+    // التحديث يظهر فوراً بدون انتظار السيرفر
     setState(() {
       updatingIds.add(id);
       setLocalStatus(id, status);
     });
 
-    try {
-      await ApiService.updateAppointmentStatus(
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('${AppStrings.appointmentMarkedAs} $status')),
+    );
+
+    unawaited(
+      ApiService.updateAppointmentStatus(
         appointment: appointment,
         status: status,
-      ).timeout(const Duration(seconds: 12));
+      ).timeout(const Duration(seconds: 15)).then((_) {
+        ApiService.resetAppointmentsCache();
 
-      if (!mounted) return;
+        if (!mounted) return;
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('${AppStrings.appointmentMarkedAs} $status')),
-      );
-    } catch (_) {
-      if (!mounted) return;
-
-      setState(() {
-        setLocalStatus(id, oldStatus);
-      });
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(AppStrings.updateAppointmentFailed)),
-      );
-    } finally {
-      if (mounted) {
         setState(() {
           updatingIds.remove(id);
         });
-      }
-    }
+      }).catchError((_) {
+        if (!mounted) return;
+
+        setState(() {
+          setLocalStatus(id, oldStatus);
+          updatingIds.remove(id);
+        });
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(AppStrings.updateAppointmentFailed)),
+        );
+      }),
+    );
   }
 
   Color statusColor(String status) {
@@ -406,18 +430,27 @@ class _ManageAppointmentsScreenState extends State<ManageAppointmentsScreen> {
               time: formatTime(dateValue),
               isUpdating: updatingIds.contains(appointmentId),
               onConfirm: () {
-                if (appointment is Map<String, dynamic>) {
-                  updateStatus(appointment, 'Confirmed');
+                if (appointment is Map) {
+                  updateStatus(
+                    Map<String, dynamic>.from(appointment),
+                    'Confirmed',
+                  );
                 }
               },
               onComplete: () {
-                if (appointment is Map<String, dynamic>) {
-                  updateStatus(appointment, 'Completed');
+                if (appointment is Map) {
+                  updateStatus(
+                    Map<String, dynamic>.from(appointment),
+                    'Completed',
+                  );
                 }
               },
               onCancel: () {
-                if (appointment is Map<String, dynamic>) {
-                  updateStatus(appointment, 'Cancelled');
+                if (appointment is Map) {
+                  updateStatus(
+                    Map<String, dynamic>.from(appointment),
+                    'Cancelled',
+                  );
                 }
               },
             );
@@ -533,6 +566,7 @@ class AppointmentAdminCard extends StatelessWidget {
         AppStrings.isArabic ? CrossAxisAlignment.end : CrossAxisAlignment.start,
         children: [
           Row(
+            textDirection: AppStrings.isArabic ? TextDirection.rtl : TextDirection.ltr,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const CircleAvatar(
@@ -579,6 +613,7 @@ class AppointmentAdminCard extends StatelessWidget {
           ),
           const SizedBox(height: 12),
           Wrap(
+            textDirection: AppStrings.isArabic ? TextDirection.rtl : TextDirection.ltr,
             spacing: 10,
             runSpacing: 8,
             crossAxisAlignment: WrapCrossAlignment.center,
@@ -596,6 +631,7 @@ class AppointmentAdminCard extends StatelessWidget {
           ),
           const SizedBox(height: 14),
           Wrap(
+            textDirection: AppStrings.isArabic ? TextDirection.rtl : TextDirection.ltr,
             spacing: 8,
             runSpacing: 8,
             children: [
@@ -658,11 +694,13 @@ class AppointmentAdminCard extends StatelessWidget {
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
+        textDirection: AppStrings.isArabic ? TextDirection.rtl : TextDirection.ltr,
         children: [
           Icon(icon, size: 15, color: Colors.grey),
           const SizedBox(width: 5),
           Text(
             text,
+            textDirection: TextDirection.ltr,
             style: const TextStyle(fontSize: 12),
           ),
         ],

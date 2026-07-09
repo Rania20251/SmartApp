@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import '../language/app_strings.dart';
 import '../services/api_service.dart';
@@ -403,6 +404,9 @@ class _DoctorsScreenState extends State<DoctorsScreen> {
             child: Column(
               children: [
                 Row(
+                  textDirection: AppStrings.isArabic
+                      ? TextDirection.rtl
+                      : TextDirection.ltr,
                   children: [
                     Expanded(
                       child: TextField(
@@ -574,12 +578,14 @@ class DoctorListCard extends StatelessWidget {
 
     if (image.startsWith('http://') || image.startsWith('https://')) {
       return ClipOval(
-        child: Image.network(
-          image,
+        child: CachedNetworkImage(
+          imageUrl: image,
           width: 60,
           height: 60,
           fit: BoxFit.cover,
-          errorBuilder: (_, __, ___) => defaultImage(),
+          fadeInDuration: Duration.zero,
+          placeholder: (_, __) => defaultImage(),
+          errorWidget: (_, __, ___) => defaultImage(),
         ),
       );
     }
@@ -639,33 +645,41 @@ class DoctorListCard extends StatelessWidget {
           borderRadius: BorderRadius.circular(20),
         ),
         child: Row(
+          textDirection: AppStrings.isArabic
+              ? TextDirection.rtl
+              : TextDirection.ltr,
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             SizedBox(
               width: 60,
               height: 60,
               child: doctorImage(),
             ),
-            const SizedBox(width: 14),
+            const SizedBox(width: 12),
             Expanded(
               child: Column(
-                crossAxisAlignment: AppStrings.isArabic
-                    ? CrossAxisAlignment.end
-                    : CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
                     name,
+                    textDirection:
+                    AppStrings.isArabic ? TextDirection.rtl : TextDirection.ltr,
                     textAlign:
                     AppStrings.isArabic ? TextAlign.right : TextAlign.left,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
                       fontSize: 16,
+                      height: 1.15,
                       fontWeight: FontWeight.bold,
                     ),
                   ),
                   const SizedBox(height: 4),
                   Text(
                     specialty,
+                    textDirection:
+                    AppStrings.isArabic ? TextDirection.rtl : TextDirection.ltr,
                     textAlign:
                     AppStrings.isArabic ? TextAlign.right : TextAlign.left,
                     maxLines: 1,
@@ -673,17 +687,24 @@ class DoctorListCard extends StatelessWidget {
                     style: const TextStyle(color: Colors.grey),
                   ),
                   const SizedBox(height: 6),
-                  const Row(
-                    children: [
-                      Icon(Icons.star, color: Colors.orange, size: 16),
-                      Text(' 4.8'),
-                    ],
+                  const Directionality(
+                    textDirection: TextDirection.ltr,
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.star, color: Colors.orange, size: 16),
+                        Text(' 4.8'),
+                      ],
+                    ),
                   ),
                 ],
               ),
             ),
-            const Icon(
-              Icons.arrow_forward_ios,
+            const SizedBox(width: 8),
+            Icon(
+              AppStrings.isArabic
+                  ? Icons.arrow_back_ios_new
+                  : Icons.arrow_forward_ios,
               size: 18,
               color: primary,
             ),

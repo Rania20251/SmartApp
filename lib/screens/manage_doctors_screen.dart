@@ -4,6 +4,7 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../language/app_strings.dart';
@@ -29,7 +30,7 @@ class _ManageDoctorsScreenState extends State<ManageDoctorsScreen> {
   }
 
   void loadDoctors() {
-    doctorsFuture = ApiService.getDoctors();
+    doctorsFuture = ApiService.getDoctors(forceRefresh: true);
   }
 
   void refreshDoctors() {
@@ -98,13 +99,15 @@ class _ManageDoctorsScreenState extends State<ManageDoctorsScreen> {
 
     if (image.startsWith('http://') || image.startsWith('https://')) {
       return ClipOval(
-        child: Image.network(
-          image,
+        child: CachedNetworkImage(
+          imageUrl: image,
           key: ValueKey(image),
           width: 60,
           height: 60,
           fit: BoxFit.cover,
-          errorBuilder: (_, __, ___) => defaultDoctorImage(),
+          fadeInDuration: Duration.zero,
+          placeholder: (_, __) => defaultDoctorImage(),
+          errorWidget: (_, __, ___) => defaultDoctorImage(),
         ),
       );
     }
@@ -133,6 +136,85 @@ class _ManageDoctorsScreenState extends State<ManageDoctorsScreen> {
         fit: BoxFit.cover,
       ),
     );
+  }
+
+
+  String translateDoctorName(String name) {
+    if (!AppStrings.isArabic) return name;
+
+    final value = name.toLowerCase().trim();
+
+    if (value.contains('ahmad ali') || value.contains('ahmed ali')) {
+      return 'د. أحمد علي';
+    }
+
+    if (value.contains('sarah ahmad') || value.contains('sara ahmad')) {
+      return 'د. سارة أحمد';
+    }
+
+    if (value.contains('mohammad') || value.contains('mohammed')) {
+      return name
+          .replaceAll('Dr.', 'د.')
+          .replaceAll('dr.', 'د.')
+          .replaceAll('Mohammad', 'محمد')
+          .replaceAll('Mohammed', 'محمد');
+    }
+
+    return name
+        .replaceAll('Dr.', 'د.')
+        .replaceAll('dr.', 'د.')
+        .replaceAll('Ahmad', 'أحمد')
+        .replaceAll('Ahmed', 'أحمد')
+        .replaceAll('Ali', 'علي')
+        .replaceAll('Sara', 'سارة')
+        .replaceAll('Sarah', 'سارة')
+        .replaceAll('Mohammad', 'محمد')
+        .replaceAll('Mohammed', 'محمد')
+        .replaceAll('Omar', 'عمر')
+        .replaceAll('Nour', 'نور')
+        .replaceAll('Adnan', 'عدنان')
+        .replaceAll('Rania', 'رانيا')
+        .replaceAll('Ramia', 'راميا');
+  }
+
+  String translateSpecialtyName(String name) {
+    final value = name.toLowerCase().trim();
+
+    if (AppStrings.isArabic) {
+      if (value.contains('cardiology') || value.contains('heart') || value.contains('قلب')) {
+        return 'القلب';
+      }
+      if (value.contains('dentistry') || value.contains('dental') || value.contains('dent') || value.contains('أسنان') || value.contains('اسنان')) {
+        return 'الأسنان';
+      }
+      if (value.contains('neurology') || value.contains('neuro') || value.contains('أعصاب') || value.contains('اعصاب')) {
+        return 'الأعصاب';
+      }
+      if (value.contains('pediatrics') || value.contains('pedia') || value.contains('child') || value.contains('أطفال') || value.contains('اطفال')) {
+        return 'الأطفال';
+      }
+      if (value.contains('dermatology') || value.contains('derma') || value.contains('جلدية')) {
+        return 'الجلدية';
+      }
+      if (value.contains('ophthalmology') || value.contains('eye') || value.contains('eyes') || value.contains('عيون')) {
+        return 'العيون';
+      }
+      if (value.contains('surgery') || value.contains('جراحة')) {
+        return 'الجراحة';
+      }
+
+      return name;
+    }
+
+    if (value.contains('قلب')) return 'Heart';
+    if (value.contains('أسنان') || value.contains('اسنان')) return 'Dentistry';
+    if (value.contains('أعصاب') || value.contains('اعصاب')) return 'Neurology';
+    if (value.contains('أطفال') || value.contains('اطفال')) return 'Pediatrics';
+    if (value.contains('جلدية')) return 'Dermatology';
+    if (value.contains('عيون')) return 'Eyes';
+    if (value.contains('جراحة')) return 'Surgery';
+
+    return name;
   }
 
   Future<void> changeDoctorImage(Map<String, dynamic> doctor) async {
@@ -252,123 +334,183 @@ class _ManageDoctorsScreenState extends State<ManageDoctorsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xffF7F8FC),
-      appBar: AppBar(
-        title: Text(AppStrings.manageDoctors),
-        backgroundColor: Colors.white,
-        foregroundColor: Colors.black,
-        elevation: 0,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: refreshDoctors,
-          ),
-          IconButton(
-            icon: const Icon(Icons.add),
-            onPressed: openAddDoctor,
-          ),
-        ],
-      ),
-      body: FutureBuilder<List<dynamic>>(
-        future: doctorsFuture,
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
+    return Directionality(
+      textDirection: AppStrings.isArabic ? TextDirection.rtl : TextDirection.ltr,
+      child: Scaffold(
+        backgroundColor: const Color(0xffF7F8FC),
+        appBar: AppBar(
+          title: Text(AppStrings.manageDoctors),
+          backgroundColor: Colors.white,
+          foregroundColor: Colors.black,
+          elevation: 0,
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.refresh),
+              onPressed: refreshDoctors,
+            ),
+            IconButton(
+              icon: const Icon(Icons.add),
+              onPressed: openAddDoctor,
+            ),
+          ],
+        ),
+        body: FutureBuilder<List<dynamic>>(
+          future: doctorsFuture,
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
+            }
 
-          if (snapshot.hasError) {
-            return Center(
-              child: Text(
-                AppStrings.failedLoadDoctors,
-                style: const TextStyle(color: Colors.red),
-              ),
-            );
-          }
-
-          final doctors = snapshot.data ?? [];
-
-          if (doctors.isEmpty) {
-            return Center(child: Text(AppStrings.noDoctorsFound));
-          }
-
-          return ListView.builder(
-            padding: const EdgeInsets.all(18),
-            itemCount: doctors.length,
-            itemBuilder: (context, index) {
-              final doctor = doctors[index];
-
-              final doctorId =
-                  int.tryParse(doctor['doctorId']?.toString() ?? '0') ?? 0;
-
-              final imagePath = getDoctorImagePath(doctor);
-              final specialtyName = getDoctorSpecialtyName(doctor);
-
-              return Container(
-                margin: const EdgeInsets.only(bottom: 16),
-                padding: const EdgeInsets.all(18),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(22),
-                ),
-                child: Row(
-                  children: [
-                    SizedBox(
-                      width: 60,
-                      height: 60,
-                      child: doctorImage(imagePath),
-                    ),
-                    const SizedBox(width: 14),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            doctor['fullName']?.toString() ?? AppStrings.doctor,
-                            style: const TextStyle(
-                              fontSize: 17,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            specialtyName,
-                            style: const TextStyle(color: Colors.grey),
-                          ),
-                          const SizedBox(height: 6),
-                          Text(
-                            doctor['email']?.toString() ?? '',
-                            style: const TextStyle(fontSize: 12),
-                          ),
-                        ],
-                      ),
-                    ),
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        IconButton(
-                          tooltip: AppStrings.changeImage,
-                          icon: const Icon(Icons.image, color: Colors.purple),
-                          onPressed: () => changeDoctorImage(doctor),
-                        ),
-                        IconButton(
-                          tooltip: AppStrings.edit,
-                          icon: const Icon(Icons.edit, color: Colors.blue),
-                          onPressed: () => openEditDoctor(doctor),
-                        ),
-                        IconButton(
-                          tooltip: AppStrings.delete,
-                          icon: const Icon(Icons.delete, color: Colors.red),
-                          onPressed: () => confirmDelete(doctorId),
-                        ),
-                      ],
-                    ),
-                  ],
+            if (snapshot.hasError) {
+              return Center(
+                child: Text(
+                  AppStrings.failedLoadDoctors,
+                  style: const TextStyle(color: Colors.red),
                 ),
               );
-            },
-          );
-        },
+            }
+
+            final doctors = snapshot.data ?? [];
+
+            if (doctors.isEmpty) {
+              return Center(child: Text(AppStrings.noDoctorsFound));
+            }
+
+            return ListView.builder(
+              padding: const EdgeInsets.all(18),
+              itemCount: doctors.length,
+              itemBuilder: (context, index) {
+                final doctor = doctors[index];
+
+                final doctorId =
+                    int.tryParse(doctor['doctorId']?.toString() ?? '0') ?? 0;
+
+                final imagePath = getDoctorImagePath(doctor);
+                final specialtyName = getDoctorSpecialtyName(doctor);
+
+                return Container(
+                  margin: const EdgeInsets.only(bottom: 16),
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(22),
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      SizedBox(
+                        width: 62,
+                        height: 62,
+                        child: doctorImage(imagePath),
+                      ),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: AppStrings.isArabic
+                              ? CrossAxisAlignment.end
+                              : CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              translateDoctorName(doctor['fullName']?.toString() ?? AppStrings.doctor),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              textAlign: AppStrings.isArabic
+                                  ? TextAlign.right
+                                  : TextAlign.left,
+                              style: const TextStyle(
+                                fontSize: 17,
+                                height: 1.15,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            const SizedBox(height: 5),
+                            Text(
+                              translateSpecialtyName(specialtyName),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              textAlign: AppStrings.isArabic
+                                  ? TextAlign.right
+                                  : TextAlign.left,
+                              style: const TextStyle(
+                                color: Colors.grey,
+                                fontSize: 14,
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                            Text(
+                              doctor['email']?.toString() ?? '',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              textAlign: AppStrings.isArabic
+                                  ? TextAlign.right
+                                  : TextAlign.left,
+                              style: const TextStyle(
+                                fontSize: 12,
+                                color: Colors.black54,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      SizedBox(
+                        width: 116,
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.end,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            SizedBox(
+                              width: 36,
+                              height: 36,
+                              child: IconButton(
+                                padding: EdgeInsets.zero,
+                                tooltip: AppStrings.changeImage,
+                                icon: const Icon(
+                                  Icons.image,
+                                  color: Colors.purple,
+                                  size: 24,
+                                ),
+                                onPressed: () => changeDoctorImage(doctor),
+                              ),
+                            ),
+                            SizedBox(
+                              width: 36,
+                              height: 36,
+                              child: IconButton(
+                                padding: EdgeInsets.zero,
+                                tooltip: AppStrings.edit,
+                                icon: const Icon(
+                                  Icons.edit,
+                                  color: Colors.blue,
+                                  size: 24,
+                                ),
+                                onPressed: () => openEditDoctor(doctor),
+                              ),
+                            ),
+                            SizedBox(
+                              width: 36,
+                              height: 36,
+                              child: IconButton(
+                                padding: EdgeInsets.zero,
+                                tooltip: AppStrings.delete,
+                                icon: const Icon(
+                                  Icons.delete,
+                                  color: Colors.red,
+                                  size: 24,
+                                ),
+                                onPressed: () => confirmDelete(doctorId),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              },
+            );
+          },
+        ),
       ),
     );
   }

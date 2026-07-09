@@ -10,14 +10,41 @@
 import 'package:flutter/material.dart';
 import '../language/app_strings.dart';
 import '../services/api_service.dart';
+import '../services/user_session.dart';
 import 'manage_doctors_screen.dart';
 import 'manage_appointments_screen.dart';
 import 'manage_users_screen.dart';
 import 'manage_medical_records_screen.dart';
 import 'manage_specialties_screen.dart';
+import 'notifications_screen.dart';
 
-class AdminDashboardScreen extends StatelessWidget {
+class AdminDashboardScreen extends StatefulWidget {
   const AdminDashboardScreen({super.key});
+
+  @override
+  State<AdminDashboardScreen> createState() => _AdminDashboardScreenState();
+}
+
+class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
+  late Future<int> notificationsCountFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    notificationsCountFuture = ApiService.getNotificationsCountByUser(
+      UserSession.userId ?? 0,
+      forceRefresh: true,
+    );
+  }
+
+  void refreshNotificationsCount() {
+    setState(() {
+      notificationsCountFuture = ApiService.getNotificationsCountByUser(
+        UserSession.userId ?? 0,
+        forceRefresh: true,
+      );
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -32,9 +59,60 @@ class AdminDashboardScreen extends StatelessWidget {
           backgroundColor: Colors.white,
           foregroundColor: Colors.black,
           elevation: 0,
-          actions: const [
-            Icon(Icons.notifications_none),
-            SizedBox(width: 12),
+          actions: [
+            FutureBuilder<int>(
+              future: notificationsCountFuture,
+              builder: (context, snapshot) {
+                final count = snapshot.data ?? 0;
+
+                return Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    IconButton(
+                      tooltip: AppStrings.notifications,
+                      icon: const Icon(Icons.notifications_none),
+                      onPressed: () async {
+                        await Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const NotificationsScreen(),
+                          ),
+                        );
+
+                        refreshNotificationsCount();
+                      },
+                    ),
+                    if (count > 0)
+                      Positioned(
+                        right: AppStrings.isArabic ? null : 7,
+                        left: AppStrings.isArabic ? 7 : null,
+                        top: 7,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 5,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.red,
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          constraints: const BoxConstraints(minWidth: 16),
+                          child: Text(
+                            count > 99 ? '99+' : count.toString(),
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 9,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                );
+              },
+            ),
+            const SizedBox(width: 8),
           ],
         ),
         body: FutureBuilder<List<int>>(
@@ -251,6 +329,7 @@ class ChartCard extends StatelessWidget {
       child: Column(
         children: [
           Row(
+            textDirection: AppStrings.isArabic ? TextDirection.rtl : TextDirection.ltr,
             children: [
               Expanded(
                 child: Text(
@@ -341,6 +420,30 @@ class ChartPainter extends CustomPainter {
 class LatestPatientsCard extends StatelessWidget {
   const LatestPatientsCard({super.key});
 
+
+  String translatePatientName(String name) {
+    if (!AppStrings.isArabic) return name;
+
+    return name
+        .replaceAll('Hana', 'هناء')
+        .replaceAll('hana', 'هناء')
+        .replaceAll('Hala', 'هالة')
+        .replaceAll('hala', 'هالة')
+        .replaceAll('Rania', 'رانيا')
+        .replaceAll('rania', 'رانيا')
+        .replaceAll('Rana', 'رنا')
+        .replaceAll('rana', 'رنا')
+        .replaceAll('Sarah', 'سارة')
+        .replaceAll('Sara', 'سارة')
+        .replaceAll('Ahmad', 'أحمد')
+        .replaceAll('Ahmed', 'أحمد')
+        .replaceAll('Ali', 'علي')
+        .replaceAll('Mohammad', 'محمد')
+        .replaceAll('Mohammed', 'محمد')
+        .replaceAll('Omar', 'عمر')
+        .replaceAll('Nour', 'نور');
+  }
+
   String getPatientName(dynamic patient) {
     return patient['fullName']?.toString() ??
         patient['FullName']?.toString() ??
@@ -373,9 +476,7 @@ class LatestPatientsCard extends StatelessWidget {
             borderRadius: BorderRadius.circular(22),
           ),
           child: Column(
-            crossAxisAlignment: AppStrings.isArabic
-                ? CrossAxisAlignment.end
-                : CrossAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
                 AppStrings.latestPatients,
@@ -402,6 +503,7 @@ class LatestPatientsCard extends StatelessWidget {
                   Padding(
                     padding: const EdgeInsets.only(bottom: 12),
                     child: Row(
+                      textDirection: AppStrings.isArabic ? TextDirection.rtl : TextDirection.ltr,
                       children: [
                         const CircleAvatar(
                           radius: 18,
@@ -411,7 +513,7 @@ class LatestPatientsCard extends StatelessWidget {
                         const SizedBox(width: 12),
                         Expanded(
                           child: Text(
-                            getPatientName(patients[i]),
+                            translatePatientName(getPatientName(patients[i])),
                             textDirection: AppStrings.isArabic
                                 ? TextDirection.rtl
                                 : TextDirection.ltr,
@@ -490,6 +592,7 @@ class ManageTile extends StatelessWidget {
         child: Padding(
           padding: const EdgeInsets.all(14),
           child: Row(
+            textDirection: AppStrings.isArabic ? TextDirection.rtl : TextDirection.ltr,
             children: [
               CircleAvatar(
                 backgroundColor: color.withOpacity(.13),
@@ -498,11 +601,14 @@ class ManageTile extends StatelessWidget {
               const SizedBox(width: 14),
               Expanded(
                 child: Column(
-                  crossAxisAlignment: AppStrings.isArabic
-                      ? CrossAxisAlignment.end
-                      : CrossAxisAlignment.start,
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
+                    Text(
+                      title,
+                      textDirection: AppStrings.isArabic ? TextDirection.rtl : TextDirection.ltr,
+                      textAlign: AppStrings.isArabic ? TextAlign.right : TextAlign.left,
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    ),
                     const SizedBox(height: 3),
                     Text(
                       subtitle,

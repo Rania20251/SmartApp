@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../language/app_strings.dart';
@@ -251,13 +252,14 @@ class _DoctorDetailsScreenState extends State<DoctorDetailsScreen> {
 
     if (safeImage.startsWith('http://') || safeImage.startsWith('https://')) {
       return ClipOval(
-        child: Image.network(
-          safeImage,
+        child: CachedNetworkImage(
+          imageUrl: safeImage,
           width: 96,
           height: 96,
           fit: BoxFit.cover,
-          gaplessPlayback: true,
-          errorBuilder: (_, __, ___) => defaultDoctorImage(),
+          fadeInDuration: Duration.zero,
+          placeholder: (_, __) => defaultDoctorImage(),
+          errorWidget: (_, __, ___) => defaultDoctorImage(),
         ),
       );
     }
@@ -366,58 +368,73 @@ class _DoctorDetailsScreenState extends State<DoctorDetailsScreen> {
                 borderRadius: BorderRadius.circular(26),
               ),
               child: Row(
+                textDirection: AppStrings.isArabic
+                    ? TextDirection.rtl
+                    : TextDirection.ltr,
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
                   SizedBox(
                     width: 96,
                     height: 96,
                     child: doctorImage(),
                   ),
-                  const SizedBox(width: 18),
+                  const SizedBox(width: 16),
                   Expanded(
                     child: Column(
-                      crossAxisAlignment: AppStrings.isArabic
-                          ? CrossAxisAlignment.end
-                          : CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
                           shownName,
+                          textDirection: AppStrings.isArabic
+                              ? TextDirection.rtl
+                              : TextDirection.ltr,
                           textAlign: AppStrings.isArabic
                               ? TextAlign.right
                               : TextAlign.left,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
                             fontSize: 21,
+                            height: 1.15,
                             fontWeight: FontWeight.bold,
                           ),
                         ),
                         const SizedBox(height: 5),
                         Text(
                           shownSpecialty,
+                          textDirection: AppStrings.isArabic
+                              ? TextDirection.rtl
+                              : TextDirection.ltr,
                           textAlign: AppStrings.isArabic
                               ? TextAlign.right
                               : TextAlign.left,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                           style: const TextStyle(color: Colors.grey),
                         ),
                         const SizedBox(height: 8),
-                        Row(
-                          mainAxisAlignment: AppStrings.isArabic
-                              ? MainAxisAlignment.end
-                              : MainAxisAlignment.start,
-                          children: [
-                            const Icon(
-                              Icons.star,
-                              color: Colors.orange,
-                              size: 18,
-                            ),
-                            Text(' ${widget.rating}'),
-                            const SizedBox(width: 6),
-                            Text(
-                              AppStrings.isArabic ? '(120 تقييم)' : '(120 reviews)',
-                              style: const TextStyle(
-                                color: Colors.grey,
-                                fontSize: 12,
+                        Directionality(
+                          textDirection: TextDirection.ltr,
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(
+                                Icons.star,
+                                color: Colors.orange,
+                                size: 18,
                               ),
-                            ),
-                          ],
+                              Text(' ${widget.rating}'),
+                              const SizedBox(width: 6),
+                              Text(
+                                AppStrings.isArabic ? '(120 تقييم)' : '(120 reviews)',
+                                style: const TextStyle(
+                                  color: Colors.grey,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ],
                     ),
@@ -434,6 +451,9 @@ class _DoctorDetailsScreenState extends State<DoctorDetailsScreen> {
                   borderRadius: BorderRadius.circular(18),
                 ),
                 child: Row(
+                  textDirection: AppStrings.isArabic
+                      ? TextDirection.rtl
+                      : TextDirection.ltr,
                   children: [
                     const Icon(Icons.check_circle, color: primary),
                     const SizedBox(width: 10),
