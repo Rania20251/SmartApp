@@ -24,7 +24,12 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
   String? errorMessage;
 
   int? _screenUserId;
+  int? _appointmentsOwnerUserId;
   int _requestVersion = 0;
+
+  final TextEditingController searchController = TextEditingController();
+  Timer? _searchDebounce;
+  String searchQuery = '';
 
   @override
   void initState() {
@@ -55,6 +60,9 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
 
   @override
   void dispose() {
+    _searchDebounce?.cancel();
+    searchController.dispose();
+
     ApiService.appointmentsVersion.removeListener(
       _onAppointmentsChanged,
     );
@@ -76,6 +84,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
 
       setState(() {
         allAppointments = [];
+        _appointmentsOwnerUserId = null;
         firstLoadDone = true;
         isRefreshing = false;
         errorMessage = null;
@@ -90,6 +99,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
 
         if (_screenUserId != requestUserId) {
           _screenUserId = requestUserId;
+          _appointmentsOwnerUserId = null;
           allAppointments = [];
           firstLoadDone = false;
         } else if (showSmallLoading && allAppointments.isEmpty) {
@@ -101,7 +111,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
     try {
       final data = await ApiService.getAppointments(
         forceRefresh: forceRefresh,
-      ).timeout(const Duration(seconds: 20));
+      ).timeout(const Duration(seconds: 12));
 
       if (!mounted ||
           requestVersion != _requestVersion ||
@@ -113,6 +123,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
 
       setState(() {
         allAppointments = loadedAppointments;
+        _appointmentsOwnerUserId = requestUserId;
         firstLoadDone = true;
         isRefreshing = false;
         errorMessage = null;
@@ -252,17 +263,117 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
         isCancelledStatus(status);
   }
 
+  String normalizeSearchText(dynamic value) {
+    var text = value?.toString().trim().toLowerCase() ?? '';
+
+    const replacements = <String, String>{
+      'أ': 'ا',
+      'إ': 'ا',
+      'آ': 'ا',
+      'ة': 'ه',
+      'ى': 'ي',
+      'ؤ': 'و',
+      'ئ': 'ي',
+    };
+
+    replacements.forEach((from, to) {
+      text = text.replaceAll(from, to);
+    });
+
+    return text
+        .replaceAll(RegExp(r'[ًٌٍَُِّْـ]'), '')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+  }
+
+  String doctorNameOf(dynamic appointment) {
+    final direct = valueOf(
+      appointment,
+      ['doctorName', 'DoctorName', 'fullName', 'FullName'],
+      '',
+    );
+
+    if (direct.isNotEmpty) return direct;
+
+    final doctor = appointment is Map
+        ? appointment['doctor'] ?? appointment['Doctor']
+        : null;
+
+    return valueOf(
+      doctor,
+      ['fullName', 'FullName', 'name', 'Name'],
+      AppStrings.doctor,
+    );
+  }
+
+  String firstNameOf(String fullName) {
+    final cleanName = fullName.trim().replaceAll(RegExp(r'\s+'), ' ');
+    if (cleanName.isEmpty) return '';
+
+    final parts = cleanName
+        .split(' ')
+        .map((part) => part.trim())
+        .where((part) => part.isNotEmpty)
+        .toList();
+
+    if (parts.isEmpty) return '';
+
+    const doctorTitles = <String>{
+      'dr',
+      'doctor',
+      'د',
+      'دكتور',
+      'دكتوره',
+      'الدكتور',
+      'الدكتوره',
+    };
+
+    for (final part in parts) {
+      final normalizedPart = normalizeSearchText(
+        part.replaceAll(RegExp(r'[.،,:؛]'), ''),
+      );
+
+      if (!doctorTitles.contains(normalizedPart)) {
+        return part;
+      }
+    }
+
+    return parts.first;
+  }
+
+  bool matchesSearch(dynamic appointment) {
+    final query = normalizeSearchText(searchQuery);
+    if (query.isEmpty) return true;
+
+    final appointmentNumber = valueOf(
+      appointment,
+      ['appointmentId', 'AppointmentId', 'id', 'Id'],
+      '',
+    );
+
+    final rawDoctorName = doctorNameOf(appointment);
+    final translatedDoctorName =
+    AppStrings.doctorNameByLanguage(rawDoctorName);
+
+    final rawFirstName = normalizeSearchText(firstNameOf(rawDoctorName));
+    final translatedFirstName =
+    normalizeSearchText(firstNameOf(translatedDoctorName));
+    final normalizedNumber = normalizeSearchText(appointmentNumber);
+
+    return rawFirstName.contains(query) ||
+        translatedFirstName.contains(query) ||
+        normalizedNumber.contains(query);
+  }
+
   List<dynamic> filteredAppointments(List<dynamic> appointments) {
     final filtered = appointments.where((appointment) {
       final status = normalizedStatus(appointment);
 
-      if (showUpcoming) {
-        // Pending وأي حالة جديدة غير منتهية تظهر في القادمة.
-        return !isPastStatus(status);
-      }
+      final matchesTab = showUpcoming
+          ? !isPastStatus(status)
+          : isPastStatus(status);
 
-      // Confirmed وCompleted وCancelled تظهر في السابقة.
-      return isPastStatus(status);
+      return matchesTab && matchesSearch(appointment);
     }).toList();
 
     filtered.sort((a, b) {
@@ -278,6 +389,79 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
     });
 
     return filtered;
+  }
+
+  void onSearchChanged(String value) {
+    _searchDebounce?.cancel();
+
+    _searchDebounce = Timer(const Duration(milliseconds: 180), () {
+      if (!mounted) return;
+
+      final normalizedValue = value.trim();
+      if (searchQuery == normalizedValue) return;
+
+      setState(() {
+        searchQuery = normalizedValue;
+      });
+    });
+  }
+
+  void clearSearch() {
+    _searchDebounce?.cancel();
+    searchController.clear();
+
+    if (searchQuery.isEmpty) return;
+
+    setState(() {
+      searchQuery = '';
+    });
+  }
+
+  Widget buildSearchField() {
+    const primary = Color(0xff5B2EFF);
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: TextField(
+        controller: searchController,
+        onChanged: onSearchChanged,
+        keyboardType: TextInputType.text,
+        textInputAction: TextInputAction.search,
+        textDirection:
+        AppStrings.isArabic ? TextDirection.rtl : TextDirection.ltr,
+        decoration: InputDecoration(
+          hintText: AppStrings.isArabic
+              ? 'ابحث بأول اسم للطبيب أو رقم الملف'
+              : 'Search doctor first name or file number',
+          hintStyle: const TextStyle(
+            color: Colors.grey,
+            fontSize: 13,
+          ),
+          prefixIcon: const Icon(
+            Icons.search,
+            color: primary,
+          ),
+          suffixIcon: searchQuery.isEmpty
+              ? null
+              : IconButton(
+            onPressed: clearSearch,
+            icon: const Icon(
+              Icons.close,
+              color: Colors.grey,
+            ),
+          ),
+          border: InputBorder.none,
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 14,
+            vertical: 15,
+          ),
+        ),
+      ),
+    );
   }
 
   Widget loadingBox() {
@@ -329,7 +513,14 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
   @override
   Widget build(BuildContext context) {
     const primary = Color(0xff5B2EFF);
-    final appointments = filteredAppointments(allAppointments);
+    final currentUserId = UserSession.userId;
+    final ownsVisibleData =
+        currentUserId != null && _appointmentsOwnerUserId == currentUserId;
+
+    // حماية من ظهور بيانات حساب سابق ولو للحظة.
+    final safeAppointments =
+    ownsVisibleData ? allAppointments : const <dynamic>[];
+    final appointments = filteredAppointments(safeAppointments);
 
     return Directionality(
       textDirection: AppStrings.isArabic ? TextDirection.rtl : TextDirection.ltr,
@@ -349,9 +540,9 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
         ),
         body: Stack(
           children: [
-            if (!firstLoadDone && allAppointments.isEmpty)
+            if (!firstLoadDone && safeAppointments.isEmpty)
               loadingBox()
-            else if (errorMessage != null && allAppointments.isEmpty)
+            else if (errorMessage != null && safeAppointments.isEmpty)
               Center(
                 child: Text(
                   errorMessage!,
@@ -359,84 +550,123 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
                 ),
               )
             else
-              ListView(
-                padding: const EdgeInsets.all(18),
-                children: [
-                  Container(
-                    height: 52,
-                    padding: const EdgeInsets.all(5),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(18),
-                    ),
-                    child: Row(
-                      textDirection: AppStrings.isArabic
-                          ? TextDirection.rtl
-                          : TextDirection.ltr,
-                      children: [
-                        Expanded(
-                          child: tabButton(
-                            title: AppStrings.isArabic ? 'القادمة' : 'Upcoming',
-                            selected: showUpcoming,
-                            onTap: () => setState(() => showUpcoming = true),
-                          ),
-                        ),
-                        Expanded(
-                          child: tabButton(
-                            title: AppStrings.isArabic ? 'السابقة' : 'Past',
-                            selected: !showUpcoming,
-                            onTap: () => setState(() => showUpcoming = false),
-                          ),
-                        ),
-                      ],
+              CustomScrollView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                slivers: [
+                  SliverPadding(
+                    padding: const EdgeInsets.fromLTRB(18, 18, 18, 0),
+                    sliver: SliverToBoxAdapter(
+                      child: buildSearchField(),
                     ),
                   ),
-                  const SizedBox(height: 20),
+                  SliverPadding(
+                    padding: const EdgeInsets.symmetric(horizontal: 18),
+                    sliver: SliverToBoxAdapter(
+                      child: Container(
+                        height: 52,
+                        padding: const EdgeInsets.all(5),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(18),
+                        ),
+                        child: Row(
+                          textDirection: AppStrings.isArabic
+                              ? TextDirection.rtl
+                              : TextDirection.ltr,
+                          children: [
+                            Expanded(
+                              child: tabButton(
+                                title: AppStrings.isArabic
+                                    ? 'القادمة'
+                                    : 'Upcoming',
+                                selected: showUpcoming,
+                                onTap: () {
+                                  if (!showUpcoming) {
+                                    setState(() => showUpcoming = true);
+                                  }
+                                },
+                              ),
+                            ),
+                            Expanded(
+                              child: tabButton(
+                                title:
+                                AppStrings.isArabic ? 'السابقة' : 'Past',
+                                selected: !showUpcoming,
+                                onTap: () {
+                                  if (showUpcoming) {
+                                    setState(() => showUpcoming = false);
+                                  }
+                                },
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SliverToBoxAdapter(
+                    child: SizedBox(height: 20),
+                  ),
                   if (appointments.isEmpty)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 80),
-                      child: Center(child: Text(AppStrings.noAppointmentsFound)),
+                    SliverToBoxAdapter(
+                      child: Padding(
+                        padding: const EdgeInsets.only(top: 80),
+                        child: Center(
+                          child: Text(AppStrings.noAppointmentsFound),
+                        ),
+                      ),
                     )
                   else
-                    ...appointments.map((appointment) {
-                      final doctorId = int.tryParse(
-                        valueOf(
-                          appointment,
-                          ['doctorId', 'DoctorId'],
-                          '0',
-                        ),
-                      ) ??
-                          0;
-
-                      return AppointmentCard(
-                        appointment: appointment,
-                        doctorId: doctorId,
-                        date: formatDate(
-                          valueOf(
-                            appointment,
-                            ['appointmentDate', 'AppointmentDate'],
-                            '',
-                          ),
-                        ),
-                        time: formatTime(
-                          valueOf(
-                            appointment,
-                            ['appointmentDate', 'AppointmentDate'],
-                            '',
-                          ),
-                        ),
-                        onDeleted: () => removeAppointmentLocal(
-                          int.tryParse(
-                            valueOf(
+                    SliverPadding(
+                      padding: const EdgeInsets.symmetric(horizontal: 18),
+                      sliver: SliverList(
+                        delegate: SliverChildBuilderDelegate(
+                              (context, index) {
+                            final appointment = appointments[index];
+                            final doctorId = int.tryParse(
+                              valueOf(
+                                appointment,
+                                ['doctorId', 'DoctorId'],
+                                '0',
+                              ),
+                            ) ??
+                                0;
+                            final appointmentId = int.tryParse(
+                              valueOf(
+                                appointment,
+                                ['appointmentId', 'AppointmentId'],
+                                '0',
+                              ),
+                            ) ??
+                                0;
+                            final dateValue = valueOf(
                               appointment,
-                              ['appointmentId', 'AppointmentId'],
-                              '0',
-                            ),
-                          ) ??
-                              0,
+                              ['appointmentDate', 'AppointmentDate'],
+                              '',
+                            );
+
+                            return RepaintBoundary(
+                              child: AppointmentCard(
+                                key: ValueKey(appointmentId),
+                                appointment:
+                                Map<String, dynamic>.from(appointment),
+                                doctorId: doctorId,
+                                date: formatDate(dateValue),
+                                time: formatTime(dateValue),
+                                onDeleted: () =>
+                                    removeAppointmentLocal(appointmentId),
+                              ),
+                            );
+                          },
+                          childCount: appointments.length,
+                          addAutomaticKeepAlives: false,
+                          addRepaintBoundaries: false,
                         ),
-                      );
-                    }),
+                      ),
+                    ),
+                  const SliverToBoxAdapter(
+                    child: SizedBox(height: 90),
+                  ),
                 ],
               ),
           ],

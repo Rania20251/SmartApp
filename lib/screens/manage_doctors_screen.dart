@@ -23,21 +23,29 @@ class _ManageDoctorsScreenState extends State<ManageDoctorsScreen> {
   late Future<List<dynamic>> doctorsFuture;
   final ImagePicker picker = ImagePicker();
 
+  // الاحتفاظ بآخر قائمة ظاهرة حتى لا تختفي أثناء أي تحديث.
+  List<dynamic> cachedDoctors = [];
+
   @override
   void initState() {
     super.initState();
     loadDoctors();
   }
 
-  void loadDoctors() {
-    doctorsFuture = ApiService.getDoctors(forceRefresh: true);
+  void loadDoctors({bool forceRefresh = false}) {
+    doctorsFuture = ApiService.getDoctors(
+      forceRefresh: forceRefresh,
+    ).then((data) {
+      cachedDoctors = List<dynamic>.from(data);
+      return cachedDoctors;
+    });
   }
 
   void refreshDoctors() {
     ApiService.clearDoctorsCache();
 
     setState(() {
-      loadDoctors();
+      loadDoctors(forceRefresh: true);
     });
   }
 
@@ -308,9 +316,8 @@ class _ManageDoctorsScreenState extends State<ManageDoctorsScreen> {
 
       if (!mounted) return;
 
-      setState(() {
-        loadDoctors();
-      });
+      // الصورة تتحدث مباشرة من نفس العنصر بدون إعادة تحميل القائمة كاملة.
+      setState(() {});
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -418,12 +425,14 @@ class _ManageDoctorsScreenState extends State<ManageDoctorsScreen> {
         ),
         body: FutureBuilder<List<dynamic>>(
           future: doctorsFuture,
+          initialData: cachedDoctors.isEmpty ? null : cachedDoctors,
           builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting) {
+            if (snapshot.connectionState == ConnectionState.waiting &&
+                cachedDoctors.isEmpty) {
               return const Center(child: CircularProgressIndicator());
             }
 
-            if (snapshot.hasError) {
+            if (snapshot.hasError && cachedDoctors.isEmpty) {
               return Center(
                 child: Text(
                   AppStrings.failedLoadDoctors,
@@ -432,7 +441,7 @@ class _ManageDoctorsScreenState extends State<ManageDoctorsScreen> {
               );
             }
 
-            final doctors = snapshot.data ?? [];
+            final doctors = snapshot.data ?? cachedDoctors;
 
             if (doctors.isEmpty) {
               return Center(child: Text(AppStrings.noDoctorsFound));
@@ -450,123 +459,125 @@ class _ManageDoctorsScreenState extends State<ManageDoctorsScreen> {
                 final imagePath = getDoctorImagePath(doctor);
                 final specialtyName = getDoctorSpecialtyName(doctor);
 
-                return Container(
-                  margin: const EdgeInsets.only(bottom: 16),
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(22),
-                  ),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      SizedBox(
-                        width: 62,
-                        height: 62,
-                        child: doctorImage(imagePath),
-                      ),
-                      const SizedBox(width: 14),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: AppStrings.isArabic
-                              ? CrossAxisAlignment.end
-                              : CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              translateDoctorName(doctor['fullName']?.toString() ?? AppStrings.doctor),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              textAlign: AppStrings.isArabic
-                                  ? TextAlign.right
-                                  : TextAlign.left,
-                              style: const TextStyle(
-                                fontSize: 17,
-                                height: 1.15,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            const SizedBox(height: 5),
-                            Text(
-                              translateSpecialtyName(specialtyName),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              textAlign: AppStrings.isArabic
-                                  ? TextAlign.right
-                                  : TextAlign.left,
-                              style: const TextStyle(
-                                color: Colors.grey,
-                                fontSize: 14,
-                              ),
-                            ),
-                            const SizedBox(height: 6),
-                            Text(
-                              doctor['email']?.toString() ?? '',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              textAlign: AppStrings.isArabic
-                                  ? TextAlign.right
-                                  : TextAlign.left,
-                              style: const TextStyle(
-                                fontSize: 12,
-                                color: Colors.black54,
-                              ),
-                            ),
-                          ],
+                return RepaintBoundary(
+                  child: Container(
+                    margin: const EdgeInsets.only(bottom: 16),
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(22),
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        SizedBox(
+                          width: 62,
+                          height: 62,
+                          child: doctorImage(imagePath),
                         ),
-                      ),
-                      const SizedBox(width: 8),
-                      SizedBox(
-                        width: 116,
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.end,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            SizedBox(
-                              width: 36,
-                              height: 36,
-                              child: IconButton(
-                                padding: EdgeInsets.zero,
-                                tooltip: AppStrings.changeImage,
-                                icon: const Icon(
-                                  Icons.image,
-                                  color: Colors.purple,
-                                  size: 24,
+                        const SizedBox(width: 14),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: AppStrings.isArabic
+                                ? CrossAxisAlignment.end
+                                : CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                translateDoctorName(doctor['fullName']?.toString() ?? AppStrings.doctor),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                textAlign: AppStrings.isArabic
+                                    ? TextAlign.right
+                                    : TextAlign.left,
+                                style: const TextStyle(
+                                  fontSize: 17,
+                                  height: 1.15,
+                                  fontWeight: FontWeight.bold,
                                 ),
-                                onPressed: () => changeDoctorImage(doctor),
                               ),
-                            ),
-                            SizedBox(
-                              width: 36,
-                              height: 36,
-                              child: IconButton(
-                                padding: EdgeInsets.zero,
-                                tooltip: AppStrings.edit,
-                                icon: const Icon(
-                                  Icons.edit,
-                                  color: Colors.blue,
-                                  size: 24,
+                              const SizedBox(height: 5),
+                              Text(
+                                translateSpecialtyName(specialtyName),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                textAlign: AppStrings.isArabic
+                                    ? TextAlign.right
+                                    : TextAlign.left,
+                                style: const TextStyle(
+                                  color: Colors.grey,
+                                  fontSize: 14,
                                 ),
-                                onPressed: () => openEditDoctor(doctor),
                               ),
-                            ),
-                            SizedBox(
-                              width: 36,
-                              height: 36,
-                              child: IconButton(
-                                padding: EdgeInsets.zero,
-                                tooltip: AppStrings.delete,
-                                icon: const Icon(
-                                  Icons.delete,
-                                  color: Colors.red,
-                                  size: 24,
+                              const SizedBox(height: 6),
+                              Text(
+                                doctor['email']?.toString() ?? '',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                textAlign: AppStrings.isArabic
+                                    ? TextAlign.right
+                                    : TextAlign.left,
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.black54,
                                 ),
-                                onPressed: () => confirmDelete(doctorId),
                               ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
-                      ),
-                    ],
+                        const SizedBox(width: 8),
+                        SizedBox(
+                          width: 116,
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.end,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              SizedBox(
+                                width: 36,
+                                height: 36,
+                                child: IconButton(
+                                  padding: EdgeInsets.zero,
+                                  tooltip: AppStrings.changeImage,
+                                  icon: const Icon(
+                                    Icons.image,
+                                    color: Colors.purple,
+                                    size: 24,
+                                  ),
+                                  onPressed: () => changeDoctorImage(doctor),
+                                ),
+                              ),
+                              SizedBox(
+                                width: 36,
+                                height: 36,
+                                child: IconButton(
+                                  padding: EdgeInsets.zero,
+                                  tooltip: AppStrings.edit,
+                                  icon: const Icon(
+                                    Icons.edit,
+                                    color: Colors.blue,
+                                    size: 24,
+                                  ),
+                                  onPressed: () => openEditDoctor(doctor),
+                                ),
+                              ),
+                              SizedBox(
+                                width: 36,
+                                height: 36,
+                                child: IconButton(
+                                  padding: EdgeInsets.zero,
+                                  tooltip: AppStrings.delete,
+                                  icon: const Icon(
+                                    Icons.delete,
+                                    color: Colors.red,
+                                    size: 24,
+                                  ),
+                                  onPressed: () => confirmDelete(doctorId),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 );
               },

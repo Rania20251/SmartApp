@@ -39,16 +39,31 @@ class _HomeScreenState extends State<HomeScreen> {
   late Future<List<dynamic>> doctorsFuture;
   late Future<List<dynamic>> specialtiesFuture;
 
+  List<dynamic> cachedDoctors = [];
+  List<dynamic> cachedSpecialties = [];
+  Timer? searchDebounce;
+
   @override
   void initState() {
     super.initState();
-    doctorsFuture = ApiService.getDoctors(forceRefresh: true);
-    specialtiesFuture = ApiService.getSpecialties();
+
+    // عرض الكاش أولاً بدل إجبار السيرفر على تحميل جديد عند كل دخول.
+    doctorsFuture = ApiService.getDoctors(forceRefresh: false).then((data) {
+      cachedDoctors = List<dynamic>.from(data);
+      return cachedDoctors;
+    });
+
+    specialtiesFuture = ApiService.getSpecialties().then((data) {
+      cachedSpecialties = List<dynamic>.from(data);
+      return cachedSpecialties;
+    });
+
     loadBanners();
   }
 
   @override
   void dispose() {
+    searchDebounce?.cancel();
     bannerTimer?.cancel();
     bannerController.dispose();
     bannerIndexNotifier.dispose();
@@ -60,7 +75,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> loadBanners() async {
     try {
-      final data = await ApiService.getBanners(forceRefresh: true);
+      final data = await ApiService.getBanners(forceRefresh: false);
 
       final fixed = List<String>.filled(3, '');
 
@@ -551,18 +566,63 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  String getFirstDoctorName(String fullName) {
+    final normalizedName = normalizeText(fullName);
+
+    if (normalizedName.isEmpty) return '';
+
+    final parts = normalizedName
+        .split(RegExp(r'\\s+'))
+        .where((part) => part.trim().isNotEmpty)
+        .toList();
+
+    if (parts.isEmpty) return '';
+
+    return parts.first;
+  }
+
   bool matchesSearch({
     required String search,
     required String name,
     required String specialty,
   }) {
     final normalizedSearch = normalizeText(search);
+
     if (normalizedSearch.isEmpty) return true;
 
-    return normalizeText(name).contains(normalizedSearch) ||
-        normalizeText(translateDoctorName(name)).contains(normalizedSearch) ||
-        normalizeText(specialty).contains(normalizedSearch) ||
-        normalizeText(translateSpecialty(specialty)).contains(normalizedSearch);
+    final originalFirstName = getFirstDoctorName(name);
+    final translatedFirstName = getFirstDoctorName(
+      translateDoctorName(name),
+    );
+
+    return originalFirstName.startsWith(normalizedSearch) ||
+        translatedFirstName.startsWith(normalizedSearch);
+  }
+
+  void onSearchChanged(String value) {
+    searchDebounce?.cancel();
+
+    searchDebounce = Timer(const Duration(milliseconds: 160), () {
+      if (!mounted) return;
+
+      final nextValue = value.trim();
+      if (nextValue == searchText) return;
+
+      setState(() {
+        searchText = nextValue;
+      });
+    });
+  }
+
+  void clearSearch() {
+    searchDebounce?.cancel();
+    searchController.clear();
+
+    if (searchText.isEmpty) return;
+
+    setState(() {
+      searchText = '';
+    });
   }
 
   @override
@@ -611,21 +671,14 @@ class _HomeScreenState extends State<HomeScreen> {
                     textAlign: AppStrings.isArabic
                         ? TextAlign.right
                         : TextAlign.left,
-                    onChanged: (value) {
-                      setState(() {
-                        searchText = value.trim();
-                      });
-                    },
+                    onChanged: onSearchChanged,
                     decoration: InputDecoration(
                       hintText: AppStrings.searchDoctors,
                       prefixIcon: const Icon(Icons.search),
                       suffixIcon: searchText.isNotEmpty
                           ? IconButton(
                         icon: const Icon(Icons.clear),
-                        onPressed: () {
-                          searchController.clear();
-                          setState(() => searchText = '');
-                        },
+                        onPressed: clearSearch,
                       )
                           : null,
                       filled: true,
@@ -649,10 +702,14 @@ class _HomeScreenState extends State<HomeScreen> {
                   const SizedBox(height: 14),
                   FutureBuilder<List<dynamic>>(
                     future: specialtiesFuture,
+                    initialData:
+                    cachedSpecialties.isEmpty ? null : cachedSpecialties,
                     builder: (context, snapshot) {
-                      final specialties = snapshot.data ?? [];
+                      final specialties =
+                          snapshot.data ?? cachedSpecialties;
 
-                      if (snapshot.connectionState == ConnectionState.waiting) {
+                      if (snapshot.connectionState == ConnectionState.waiting &&
+                          cachedSpecialties.isEmpty) {
                         return const SizedBox(
                           height: 118,
                           child: Center(child: CircularProgressIndicator()),
@@ -748,27 +805,29 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                   ),
                   const SizedBox(height: 18),
-                  FutureBuilder<List<List<dynamic>>>(
-                    future: Future.wait([doctorsFuture, specialtiesFuture]),
+                  FutureBuilder<List<dynamic>>(
+                    future: doctorsFuture,
+                    initialData: cachedDoctors.isEmpty ? null : cachedDoctors,
                     builder: (context, snapshot) {
-                      if (snapshot.connectionState == ConnectionState.waiting) {
+                      if (snapshot.connectionState == ConnectionState.waiting &&
+                          cachedDoctors.isEmpty) {
                         return const Center(
                           child: Padding(
-                            padding: EdgeInsets.all(20),
-                            child: CircularProgressIndicator(),
+                            padding: EdgeInsets.all(12),
+                            child: CircularProgressIndicator(strokeWidth: 2),
                           ),
                         );
                       }
 
-                      if (snapshot.hasError) {
+                      if (snapshot.hasError && cachedDoctors.isEmpty) {
                         return Text(
                           AppStrings.failedLoadDoctors,
                           style: const TextStyle(color: Colors.red),
                         );
                       }
 
-                      final doctors = snapshot.data?[0] ?? [];
-                      final specialties = snapshot.data?[1] ?? [];
+                      final doctors = snapshot.data ?? cachedDoctors;
+                      final specialties = cachedSpecialties;
 
                       final specialtyNames = <int, String>{};
 
@@ -803,7 +862,8 @@ class _HomeScreenState extends State<HomeScreen> {
                       }
 
                       return Column(
-                        children: filteredDoctors.map((doctor) {
+                        children: List.generate(filteredDoctors.length, (index) {
+                          final doctor = filteredDoctors[index];
                           final doctorId = int.tryParse(
                             doctor['doctorId']?.toString() ?? '0',
                           ) ??
@@ -817,15 +877,18 @@ class _HomeScreenState extends State<HomeScreen> {
                           final originalName =
                               doctor['fullName']?.toString() ?? AppStrings.doctor;
 
-                          return DoctorCard(
-                            name: translateDoctorName(originalName),
-                            specialty: translateSpecialty(specialtyName),
-                            rating: '4.8',
-                            time: '10:30 AM',
-                            doctorId: doctorId,
-                            imagePath: imagePath,
+                          return RepaintBoundary(
+                            child: DoctorCard(
+                              key: ValueKey(doctorId),
+                              name: translateDoctorName(originalName),
+                              specialty: translateSpecialty(specialtyName),
+                              rating: '4.8',
+                              time: '10:30 AM',
+                              doctorId: doctorId,
+                              imagePath: imagePath,
+                            ),
                           );
-                        }).toList(),
+                        }),
                       );
                     },
                   ),
@@ -919,8 +982,6 @@ class DoctorCard extends StatefulWidget {
 }
 
 class _DoctorCardState extends State<DoctorCard> {
-  bool isBooking = false;
-
   Widget doctorImage() {
     final image = widget.imagePath.trim();
 
@@ -1097,51 +1158,20 @@ class _DoctorCardState extends State<DoctorCard> {
               width: 74,
               height: 38,
               child: ElevatedButton(
-                onPressed: isBooking
-                    ? null
-                    : () async {
-                  if (isBooking) return;
-
-                  setState(() => isBooking = true);
-
-                  try {
-                    await ApiService.bookAppointment(
-                      patientId: UserSession.userId ?? 0,
-                      doctorId: widget.doctorId,
-                      appointmentDate: DateTime.now().add(
-                        const Duration(days: 1),
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => DoctorDetailsScreen(
+                        doctorId: widget.doctorId,
+                        name: widget.name,
+                        specialty: widget.specialty,
+                        rating: widget.rating,
+                        time: widget.time,
+                        imagePath: widget.imagePath,
                       ),
-                    );
-
-
-                    if (!mounted) return;
-
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text(AppStrings.appointmentBooked)),
-                    );
-                  } on AppointmentSlotTakenException {
-                    if (!mounted) return;
-
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text(
-                          AppStrings.isArabic
-                              ? 'هذا الموعد غير متاح، اختاري وقتًا آخر.'
-                              : 'This appointment is unavailable. Please choose another time.',
-                        ),
-                      ),
-                    );
-                  } catch (_) {
-                    if (!mounted) return;
-
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text(AppStrings.appointmentFailed)),
-                    );
-                  } finally {
-                    if (mounted) {
-                      setState(() => isBooking = false);
-                    }
-                  }
+                    ),
+                  );
                 },
                 style: ElevatedButton.styleFrom(
                   backgroundColor: primary,
@@ -1151,16 +1181,7 @@ class _DoctorCardState extends State<DoctorCard> {
                     borderRadius: BorderRadius.circular(12),
                   ),
                 ),
-                child: isBooking
-                    ? const SizedBox(
-                  width: 18,
-                  height: 18,
-                  child: CircularProgressIndicator(
-                    color: Colors.white,
-                    strokeWidth: 2,
-                  ),
-                )
-                    : Text(AppStrings.book),
+                child: Text(AppStrings.book),
               ),
             ),
           ],

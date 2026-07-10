@@ -26,24 +26,153 @@ class AdminDashboardScreen extends StatefulWidget {
 }
 
 class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
+  // يبقى آخر رقم حقيقي محفوظاً عند الرجوع للشاشة، ولا نبدأ بأصفار وهمية.
+  static final List<int?> _lastDashboardCounts = <int?>[
+    null,
+    null,
+    null,
+    null,
+  ];
+  static final Map<int, int> _lastNotificationsByUser = <int, int>{};
+  static List<dynamic> _lastRecentPatients = <dynamic>[];
+
   late Future<int> notificationsCountFuture;
+  late Future<List<dynamic>> recentPatientsFuture;
+
+  late List<int?> dashboardCounts;
+  List<dynamic> cachedRecentPatients = <dynamic>[];
+  int cachedNotificationsCount = 0;
+
+  bool isDashboardRefreshing = false;
+  int _dashboardRequestVersion = 0;
 
   @override
   void initState() {
     super.initState();
+
+    dashboardCounts = List<int?>.from(_lastDashboardCounts);
+    cachedRecentPatients = List<dynamic>.from(_lastRecentPatients);
+
+    final userId = UserSession.userId ?? 0;
+    cachedNotificationsCount = _lastNotificationsByUser[userId] ?? 0;
+
+    _loadNotificationsCount(forceRefresh: false);
+    _loadRecentPatients();
+    _loadDashboardCounts();
+  }
+
+  Future<void> _loadDashboardCounts() async {
+    final requestVersion = ++_dashboardRequestVersion;
+
+    if (mounted) {
+      setState(() {
+        isDashboardRefreshing = true;
+      });
+    }
+
+    // كل عداد يتحدث فور وصوله، ولا ينتظر أبطأ طلب.
+    final requests = <Future<void>>[
+      _loadSingleCount(
+        index: 0,
+        requestVersion: requestVersion,
+        request: ApiService.getPatientsCount(),
+      ),
+      _loadSingleCount(
+        index: 1,
+        requestVersion: requestVersion,
+        request: ApiService.getDoctorsCount(),
+      ),
+      _loadSingleCount(
+        index: 2,
+        requestVersion: requestVersion,
+        request: ApiService.getAppointmentsCount(),
+      ),
+      _loadSingleCount(
+        index: 3,
+        requestVersion: requestVersion,
+        request: ApiService.getMedicalRecordsCount(),
+      ),
+    ];
+
+    await Future.wait(requests);
+
+    if (!mounted || requestVersion != _dashboardRequestVersion) return;
+
+    setState(() {
+      isDashboardRefreshing = false;
+    });
+  }
+
+  Future<void> _loadSingleCount({
+    required int index,
+    required int requestVersion,
+    required Future<int> request,
+  }) async {
+    try {
+      final value = await request.timeout(const Duration(seconds: 12));
+
+      if (!mounted || requestVersion != _dashboardRequestVersion) return;
+
+      setState(() {
+        dashboardCounts[index] = value;
+        _lastDashboardCounts[index] = value;
+      });
+    } catch (_) {
+      // لا نصفر القيمة القديمة عند فشل أو بطء السيرفر.
+    }
+  }
+
+  void _loadNotificationsCount({bool forceRefresh = false}) {
+    final userId = UserSession.userId ?? 0;
+
     notificationsCountFuture = ApiService.getNotificationsCountByUser(
-      UserSession.userId ?? 0,
-      forceRefresh: true,
-    );
+      userId,
+      forceRefresh: forceRefresh,
+    ).then((count) {
+      cachedNotificationsCount = count;
+      _lastNotificationsByUser[userId] = count;
+      return count;
+    }).catchError((_) {
+      return cachedNotificationsCount;
+    });
+  }
+
+  void _loadRecentPatients() {
+    recentPatientsFuture = ApiService.getRecentPatients().then((data) {
+      cachedRecentPatients = List<dynamic>.from(data);
+      _lastRecentPatients = List<dynamic>.from(data);
+      return cachedRecentPatients;
+    }).catchError((_) {
+      return cachedRecentPatients;
+    });
   }
 
   void refreshNotificationsCount() {
     setState(() {
-      notificationsCountFuture = ApiService.getNotificationsCountByUser(
-        UserSession.userId ?? 0,
-        forceRefresh: true,
-      );
+      _loadNotificationsCount(forceRefresh: true);
     });
+  }
+
+  void refreshDashboardCounts() {
+    if (isDashboardRefreshing) return;
+
+    _loadRecentPatients();
+
+    setState(() {
+      // نحتفظ بالقيم الحالية أثناء التحديث.
+    });
+
+    _loadDashboardCounts();
+  }
+
+  Future<void> openAndRefresh(Widget screen) async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => screen),
+    );
+
+    if (!mounted) return;
+    refreshDashboardCounts();
   }
 
   @override
@@ -63,7 +192,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
             FutureBuilder<int>(
               future: notificationsCountFuture,
               builder: (context, snapshot) {
-                final count = snapshot.data ?? 0;
+                final count = snapshot.data ?? cachedNotificationsCount;
 
                 return Stack(
                   clipBehavior: Clip.none,
@@ -112,142 +241,132 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                 );
               },
             ),
+            IconButton(
+              tooltip: AppStrings.isArabic
+                  ? 'تحديث الداشبورد'
+                  : 'Refresh dashboard',
+              onPressed:
+              isDashboardRefreshing ? null : refreshDashboardCounts,
+              icon: isDashboardRefreshing
+                  ? const SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+                  : const Icon(Icons.refresh),
+            ),
             const SizedBox(width: 8),
           ],
         ),
-        body: FutureBuilder<List<int>>(
-          future: Future.wait([
-            ApiService.getPatientsCount(),
-            ApiService.getDoctorsCount(),
-            ApiService.getAppointmentsCount(),
-            ApiService.getMedicalRecordsCount(),
-          ]),
-          builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting) {
-              return const Center(child: CircularProgressIndicator());
-            }
-
-            final data = snapshot.data ?? [0, 0, 0, 0];
-
-            return ListView(
-              padding: const EdgeInsets.all(18),
+        body: ListView(
+          padding: const EdgeInsets.all(18),
+          children: [
+            Row(
               children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: TopCard(
-                        title: AppStrings.totalPatients,
-                        value: data[0].toString(),
-                        icon: Icons.people,
-                        color: primary,
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: TopCard(
-                        title: AppStrings.totalDoctors,
-                        value: data[1].toString(),
-                        icon: Icons.local_hospital,
-                        color: Colors.green,
-                      ),
-                    ),
-                  ],
+                Expanded(
+                  child: TopCard(
+                    title: AppStrings.totalPatients,
+                    value: dashboardCounts[0]?.toString() ?? '—',
+                    icon: Icons.people,
+                    color: primary,
+                  ),
                 ),
-                const SizedBox(height: 10),
-                Row(
-                  children: [
-                    Expanded(
-                      child: TopCard(
-                        title: AppStrings.appointments,
-                        value: data[2].toString(),
-                        icon: Icons.calendar_month,
-                        color: Colors.red,
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: TopCard(
-                        title: AppStrings.pending,
-                        value: data[3].toString(),
-                        icon: Icons.access_time,
-                        color: Colors.orange,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 22),
-                const ChartCard(),
-                const SizedBox(height: 18),
-                const LatestPatientsCard(),
-                const SizedBox(height: 22),
-                Text(
-                  AppStrings.management,
-                  style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 12),
-                ManageTile(
-                  icon: Icons.people,
-                  title: AppStrings.manageUsers,
-                  subtitle: AppStrings.manageUsersSubtitle,
-                  color: primary,
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (_) => const ManageUsersScreen()),
-                    );
-                  },
-                ),
-                ManageTile(
-                  icon: Icons.local_hospital,
-                  title: AppStrings.manageDoctors,
-                  subtitle: AppStrings.manageDoctorsSubtitle,
-                  color: primary,
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (_) => const ManageDoctorsScreen()),
-                    );
-                  },
-                ),
-                ManageTile(
-                  icon: Icons.category,
-                  title: AppStrings.manageSpecialties,
-                  subtitle: AppStrings.manageSpecialtiesSubtitle,
-                  color: Colors.purple,
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (_) => const ManageSpecialtiesScreen()),
-                    );
-                  },
-                ),
-                ManageTile(
-                  icon: Icons.event_note,
-                  title: AppStrings.manageAppointments,
-                  subtitle: AppStrings.manageAppointmentsSubtitle,
-                  color: Colors.red,
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (_) => const ManageAppointmentsScreen()),
-                    );
-                  },
-                ),
-                ManageTile(
-                  icon: Icons.description,
-                  title: AppStrings.manageMedicalRecords,
-                  subtitle: AppStrings.manageMedicalRecordsSubtitle,
-                  color: Colors.orange,
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (_) => const ManageMedicalRecordsScreen()),
-                    );
-                  },
+                const SizedBox(width: 10),
+                Expanded(
+                  child: TopCard(
+                    title: AppStrings.totalDoctors,
+                    value: dashboardCounts[1]?.toString() ?? '—',
+                    icon: Icons.local_hospital,
+                    color: Colors.green,
+                  ),
                 ),
               ],
-            );
-          },
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: TopCard(
+                    title: AppStrings.appointments,
+                    value: dashboardCounts[2]?.toString() ?? '—',
+                    icon: Icons.calendar_month,
+                    color: Colors.red,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: TopCard(
+                    title: AppStrings.pending,
+                    value: dashboardCounts[3]?.toString() ?? '—',
+                    icon: Icons.access_time,
+                    color: Colors.orange,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 22),
+            const RepaintBoundary(
+              child: ChartCard(),
+            ),
+            const SizedBox(height: 18),
+            RepaintBoundary(
+              child: LatestPatientsCard(
+                future: recentPatientsFuture,
+                cachedPatients: cachedRecentPatients,
+              ),
+            ),
+            const SizedBox(height: 22),
+            Text(
+              AppStrings.management,
+              style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 12),
+            ManageTile(
+              icon: Icons.people,
+              title: AppStrings.manageUsers,
+              subtitle: AppStrings.manageUsersSubtitle,
+              color: primary,
+              onTap: () {
+                openAndRefresh(const ManageUsersScreen());
+              },
+            ),
+            ManageTile(
+              icon: Icons.local_hospital,
+              title: AppStrings.manageDoctors,
+              subtitle: AppStrings.manageDoctorsSubtitle,
+              color: primary,
+              onTap: () {
+                openAndRefresh(const ManageDoctorsScreen());
+              },
+            ),
+            ManageTile(
+              icon: Icons.category,
+              title: AppStrings.manageSpecialties,
+              subtitle: AppStrings.manageSpecialtiesSubtitle,
+              color: Colors.purple,
+              onTap: () {
+                openAndRefresh(const ManageSpecialtiesScreen());
+              },
+            ),
+            ManageTile(
+              icon: Icons.event_note,
+              title: AppStrings.manageAppointments,
+              subtitle: AppStrings.manageAppointmentsSubtitle,
+              color: Colors.red,
+              onTap: () {
+                openAndRefresh(const ManageAppointmentsScreen());
+              },
+            ),
+            ManageTile(
+              icon: Icons.description,
+              title: AppStrings.manageMedicalRecords,
+              subtitle: AppStrings.manageMedicalRecordsSubtitle,
+              color: Colors.orange,
+              onTap: () {
+                openAndRefresh(const ManageMedicalRecordsScreen());
+              },
+            ),
+          ],
         ),
       ),
     );
@@ -418,7 +537,14 @@ class ChartPainter extends CustomPainter {
 }
 
 class LatestPatientsCard extends StatelessWidget {
-  const LatestPatientsCard({super.key});
+  final Future<List<dynamic>> future;
+  final List<dynamic> cachedPatients;
+
+  const LatestPatientsCard({
+    super.key,
+    required this.future,
+    required this.cachedPatients,
+  });
 
 
   String translatePatientName(String name) {
@@ -464,10 +590,12 @@ class LatestPatientsCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return FutureBuilder<List<dynamic>>(
-      future: ApiService.getRecentPatients(),
+      future: future,
+      initialData: cachedPatients.isEmpty ? null : cachedPatients,
       builder: (context, snapshot) {
-        final isLoading = snapshot.connectionState == ConnectionState.waiting;
-        final patients = snapshot.data ?? [];
+        final isLoading = snapshot.connectionState == ConnectionState.waiting &&
+            cachedPatients.isEmpty;
+        final patients = snapshot.data ?? cachedPatients;
 
         return Container(
           padding: const EdgeInsets.all(16),

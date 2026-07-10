@@ -24,6 +24,10 @@ class _ManageAppointmentsScreenState extends State<ManageAppointmentsScreen> {
   List<dynamic> appointments = [];
   final Set<String> updatingIds = {};
 
+  final TextEditingController searchController = TextEditingController();
+  Timer? _searchDebounce;
+  String searchQuery = '';
+
   int _requestVersion = 0;
   int? _screenUserId;
 
@@ -37,8 +41,8 @@ class _ManageAppointmentsScreenState extends State<ManageAppointmentsScreen> {
       _onAppointmentsChanged,
     );
 
-    // تحميل واحد عند فتح الشاشة بدون تكرار.
-    loadAppointments(firstLoad: true, forceRefresh: true);
+    // اعرض الكاش فوراً عند فتح الشاشة ولا تنتظر طلباً إجبارياً جديداً.
+    loadAppointments(firstLoad: true, forceRefresh: false);
   }
 
   void _onAppointmentsChanged() {
@@ -53,6 +57,8 @@ class _ManageAppointmentsScreenState extends State<ManageAppointmentsScreen> {
 
   @override
   void dispose() {
+    _searchDebounce?.cancel();
+    searchController.dispose();
     ApiService.appointmentsVersion.removeListener(
       _onAppointmentsChanged,
     );
@@ -89,7 +95,7 @@ class _ManageAppointmentsScreenState extends State<ManageAppointmentsScreen> {
     try {
       final data = await ApiService.getAllAppointments(
         forceRefresh: forceRefresh,
-      ).timeout(const Duration(seconds: 12));
+      ).timeout(const Duration(seconds: 10));
 
       // تجاهل أي نتيجة قديمة أو نتيجة تخص جلسة تغيّرت.
       if (!mounted ||
@@ -382,6 +388,88 @@ class _ManageAppointmentsScreenState extends State<ManageAppointmentsScreen> {
     return AppStrings.specialist;
   }
 
+
+  String normalizeSearch(String value){
+    return value.toLowerCase()
+        .replaceAll('أ','ا')
+        .replaceAll('إ','ا')
+        .replaceAll('آ','ا')
+        .replaceAll('ة','ه')
+        .replaceAll('ى','ي')
+        .trim();
+  }
+
+  String firstDoctorName(String name){
+    var n=normalizeSearch(name)
+        .replaceFirst(RegExp(r'^dr\.?\s*'),'')
+        .replaceFirst(RegExp(r'^doctor\s+'),'')
+        .replaceFirst(RegExp(r'^د\.?\s*'),'')
+        .replaceFirst(RegExp(r'^دكتور\s+'),'')
+        .trim();
+    return n.isEmpty?'':n.split(RegExp(r'\s+')).first;
+  }
+
+  bool appointmentMatchesSearch(dynamic appointment){
+    final q=normalizeSearch(searchQuery);
+    if(q.isEmpty) return true;
+    final id=appointmentKey(appointment);
+    if(RegExp(r'^\d+$').hasMatch(q)){
+      return id.startsWith(q);
+    }
+    final first=firstDoctorName(doctorNameOf(appointment));
+    final firstTranslated=firstDoctorName(AppStrings.doctorNameByLanguage(doctorNameOf(appointment)));
+    return first.startsWith(q)||firstTranslated.startsWith(q);
+  }
+
+  List<dynamic> get filteredAppointments =>
+      appointments.where(appointmentMatchesSearch).toList();
+
+  void onSearchChanged(String value) {
+    _searchDebounce?.cancel();
+
+    _searchDebounce = Timer(const Duration(milliseconds: 160), () {
+      if (!mounted) return;
+
+      final nextValue = value.trim();
+      if (nextValue == searchQuery) return;
+
+      setState(() {
+        searchQuery = nextValue;
+      });
+    });
+  }
+
+  void clearSearch() {
+    _searchDebounce?.cancel();
+    searchController.clear();
+
+    if (searchQuery.isEmpty) return;
+
+    setState(() {
+      searchQuery = '';
+    });
+  }
+
+  Widget buildSearchField(){
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16,12,16,6),
+      child: TextField(
+        controller: searchController,
+        onChanged: onSearchChanged,
+        textInputAction: TextInputAction.search,
+        decoration: InputDecoration(
+          hintText: AppStrings.isArabic?'ابحث بالاسم الأول أو رقم ID':'Search by first name or ID',
+          prefixIcon: const Icon(Icons.search),
+          suffixIcon: searchQuery.isEmpty?null:IconButton(
+            icon: const Icon(Icons.close),
+            onPressed: clearSearch,
+          ),
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
+        ),
+      ),
+    );
+  }
+
   Widget centerMessage(String text, {IconData icon = Icons.event_busy}) {
     return Center(
       child: Padding(
@@ -439,77 +527,76 @@ class _ManageAppointmentsScreenState extends State<ManageAppointmentsScreen> {
     }
 
     if (appointments.isEmpty) {
-      return centerMessage(AppStrings.noAppointmentsFound);
+      return Column(children:[buildSearchField(),Expanded(child:centerMessage(AppStrings.noAppointmentsFound))]);
     }
 
-    return Stack(
-      children: [
-        ListView.builder(
-          physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.all(16),
-          itemCount: appointments.length,
-          itemBuilder: (context, index) {
-            final appointment = appointments[index];
+    final visibleAppointments=filteredAppointments;
+    return Column(children:[buildSearchField(),Expanded(child:ListView.builder(
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: const EdgeInsets.all(16),
+      itemCount: visibleAppointments.length,
+      itemBuilder: (context, index) {
+        final appointment = visibleAppointments[index];
 
-            final appointmentId = appointmentKey(appointment);
-            final patientName = patientNameOf(appointment);
-            final doctorName = doctorNameOf(appointment);
-            final specialty = specialtyOf(appointment);
+        final appointmentId = appointmentKey(appointment);
+        final patientName = patientNameOf(appointment);
+        final doctorName = doctorNameOf(appointment);
+        final specialty = specialtyOf(appointment);
 
-            final status = valueOf(
-              appointment,
-              ['status', 'Status'],
-              'Pending',
-            );
+        final status = valueOf(
+          appointment,
+          ['status', 'Status'],
+          'Pending',
+        );
 
-            final dateValue = valueOf(
-              appointment,
-              ['appointmentDate', 'AppointmentDate'],
-              '',
-            );
+        final dateValue = valueOf(
+          appointment,
+          ['appointmentDate', 'AppointmentDate'],
+          '',
+        );
 
-            return AppointmentAdminCard(
-              appointmentId: appointmentId,
-              patientName:
-              AppStrings.personNameByLanguage(patientName),
-              doctorName:
-              AppStrings.doctorNameByLanguage(doctorName),
-              specialty:
-              AppStrings.specialtyByLanguage(specialty),
-              statusText: statusByLanguage(status),
-              statusColor: statusColor(status),
-              date: formatDate(dateValue),
-              time: formatTime(dateValue),
-              isUpdating: updatingIds.contains(appointmentId),
-              onConfirm: () async {
-                if (appointment is Map) {
-                  await updateStatus(
-                    Map<String, dynamic>.from(appointment),
-                    'Confirmed',
-                  );
-                }
-              },
-              onComplete: () async {
-                if (appointment is Map) {
-                  await updateStatus(
-                    Map<String, dynamic>.from(appointment),
-                    'Completed',
-                  );
-                }
-              },
-              onCancel: () async {
-                if (appointment is Map) {
-                  await updateStatus(
-                    Map<String, dynamic>.from(appointment),
-                    'Cancelled',
-                  );
-                }
-              },
-            );
-          },
-        ),
-      ],
-    );
+        return RepaintBoundary(
+          child: AppointmentAdminCard(
+            appointmentId: appointmentId,
+            patientName:
+            AppStrings.personNameByLanguage(patientName),
+            doctorName:
+            AppStrings.doctorNameByLanguage(doctorName),
+            specialty:
+            AppStrings.specialtyByLanguage(specialty),
+            statusText: statusByLanguage(status),
+            statusColor: statusColor(status),
+            date: formatDate(dateValue),
+            time: formatTime(dateValue),
+            isUpdating: updatingIds.contains(appointmentId),
+            onConfirm: () async {
+              if (appointment is Map) {
+                await updateStatus(
+                  Map<String, dynamic>.from(appointment),
+                  'Confirmed',
+                );
+              }
+            },
+            onComplete: () async {
+              if (appointment is Map) {
+                await updateStatus(
+                  Map<String, dynamic>.from(appointment),
+                  'Completed',
+                );
+              }
+            },
+            onCancel: () async {
+              if (appointment is Map) {
+                await updateStatus(
+                  Map<String, dynamic>.from(appointment),
+                  'Cancelled',
+                );
+              }
+            },
+          ),
+        );
+      },
+    ))]);
   }
 
   @override

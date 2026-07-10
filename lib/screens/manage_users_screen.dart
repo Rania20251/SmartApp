@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import '../language/app_strings.dart';
 import '../services/api_service.dart';
 
@@ -14,15 +15,25 @@ class ManageUsersScreen extends StatefulWidget {
 class _ManageUsersScreenState extends State<ManageUsersScreen> {
   late Future<List<dynamic>> usersFuture;
 
+  // الاحتفاظ بآخر قائمة حتى لا تختفي أثناء التحديث.
+  List<dynamic> cachedUsers = [];
+
   @override
   void initState() {
     super.initState();
-    usersFuture = ApiService.getPatients();
+    loadUsers();
+  }
+
+  void loadUsers() {
+    usersFuture = ApiService.getPatients().then((data) {
+      cachedUsers = List<dynamic>.from(data);
+      return cachedUsers;
+    });
   }
 
   void refreshUsers() {
     setState(() {
-      usersFuture = ApiService.getPatients();
+      loadUsers();
     });
   }
 
@@ -105,12 +116,14 @@ class _ManageUsersScreenState extends State<ManageUsersScreen> {
 
     if (image.startsWith('http')) {
       return ClipOval(
-        child: Image.network(
-          image,
+        child: CachedNetworkImage(
+          imageUrl: image,
           width: 60,
           height: 60,
           fit: BoxFit.cover,
-          errorBuilder: (_, __, ___) => defaultUserImage(),
+          fadeInDuration: Duration.zero,
+          placeholder: (_, __) => defaultUserImage(),
+          errorWidget: (_, __, ___) => defaultUserImage(),
         ),
       );
     }
@@ -191,12 +204,14 @@ class _ManageUsersScreenState extends State<ManageUsersScreen> {
         ),
         body: FutureBuilder<List<dynamic>>(
           future: usersFuture,
+          initialData: cachedUsers.isEmpty ? null : cachedUsers,
           builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting) {
+            if (snapshot.connectionState == ConnectionState.waiting &&
+                cachedUsers.isEmpty) {
               return const Center(child: CircularProgressIndicator());
             }
 
-            if (snapshot.hasError) {
+            if (snapshot.hasError && cachedUsers.isEmpty) {
               return Center(
                 child: Text(
                   AppStrings.failedLoadUsers,
@@ -205,7 +220,7 @@ class _ManageUsersScreenState extends State<ManageUsersScreen> {
               );
             }
 
-            final users = snapshot.data ?? [];
+            final users = snapshot.data ?? cachedUsers;
 
             if (users.isEmpty) {
               return Center(child: Text(AppStrings.noUsersFound));
@@ -232,75 +247,77 @@ class _ManageUsersScreenState extends State<ManageUsersScreen> {
                 final phone =
                     '${user['phoneNumber'] ?? user['PhoneNumber'] ?? ''}';
 
-                return Container(
-                  margin: const EdgeInsets.only(bottom: 16),
-                  padding: const EdgeInsets.all(18),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(22),
-                  ),
-                  child: Row(
-                    textDirection:
-                    AppStrings.isArabic ? TextDirection.rtl : TextDirection.ltr,
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      SizedBox(
-                        width: 60,
-                        height: 60,
-                        child: userImage(getUserImage(user)),
-                      ),
-                      const SizedBox(width: 14),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              full,
-                              textDirection: AppStrings.isArabic
-                                  ? TextDirection.rtl
-                                  : TextDirection.ltr,
-                              textAlign: AppStrings.isArabic
-                                  ? TextAlign.right
-                                  : TextAlign.left,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                fontSize: 17,
-                                fontWeight: FontWeight.bold,
+                return RepaintBoundary(
+                  child: Container(
+                    margin: const EdgeInsets.only(bottom: 16),
+                    padding: const EdgeInsets.all(18),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(22),
+                    ),
+                    child: Row(
+                      textDirection:
+                      AppStrings.isArabic ? TextDirection.rtl : TextDirection.ltr,
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        SizedBox(
+                          width: 60,
+                          height: 60,
+                          child: userImage(getUserImage(user)),
+                        ),
+                        const SizedBox(width: 14),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                full,
+                                textDirection: AppStrings.isArabic
+                                    ? TextDirection.rtl
+                                    : TextDirection.ltr,
+                                textAlign: AppStrings.isArabic
+                                    ? TextAlign.right
+                                    : TextAlign.left,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  fontSize: 17,
+                                  fontWeight: FontWeight.bold,
+                                ),
                               ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              email,
-                              textDirection: TextDirection.ltr,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(color: Colors.grey),
-                            ),
-                            if (phone.isNotEmpty) ...[
                               const SizedBox(height: 4),
                               Text(
-                                phone,
+                                email,
                                 textDirection: TextDirection.ltr,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(color: Colors.grey),
+                              ),
+                              if (phone.isNotEmpty) ...[
+                                const SizedBox(height: 4),
+                                Text(
+                                  phone,
+                                  textDirection: TextDirection.ltr,
+                                  style: const TextStyle(fontSize: 12),
+                                ),
+                              ],
+                              const SizedBox(height: 4),
+                              Text(
+                                '${AppStrings.userId}: $id',
+                                textDirection: AppStrings.isArabic
+                                    ? TextDirection.rtl
+                                    : TextDirection.ltr,
                                 style: const TextStyle(fontSize: 12),
                               ),
                             ],
-                            const SizedBox(height: 4),
-                            Text(
-                              '${AppStrings.userId}: $id',
-                              textDirection: AppStrings.isArabic
-                                  ? TextDirection.rtl
-                                  : TextDirection.ltr,
-                              style: const TextStyle(fontSize: 12),
-                            ),
-                          ],
+                          ),
                         ),
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.delete, color: Colors.red),
-                        onPressed: () => confirmDelete(id),
-                      ),
-                    ],
+                        IconButton(
+                          icon: const Icon(Icons.delete, color: Colors.red),
+                          onPressed: () => confirmDelete(id),
+                        ),
+                      ],
+                    ),
                   ),
                 );
               },

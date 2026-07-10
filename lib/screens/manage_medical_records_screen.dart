@@ -13,33 +13,115 @@ class ManageMedicalRecordsScreen extends StatefulWidget {
 
 class _ManageMedicalRecordsScreenState
     extends State<ManageMedicalRecordsScreen> {
-  late Future<List<dynamic>> recordsFuture;
+  static const Color primary = Color(0xff5B2EFF);
+  static const Color background = Color(0xffF7F8FC);
+
+  final List<Map<String, dynamic>> _records = <Map<String, dynamic>>[];
+
+  bool _isLoading = true;
+  bool _isRefreshing = false;
+  String? _loadError;
 
   @override
   void initState() {
     super.initState();
-    recordsFuture = ApiService.getMedicalRecords();
+    _loadRecords(showLoading: true);
   }
 
-  void refreshRecords() {
+  Map<String, dynamic> _toRecordMap(dynamic value) {
+    if (value is Map<String, dynamic>) {
+      return Map<String, dynamic>.from(value);
+    }
+
+    if (value is Map) {
+      return Map<String, dynamic>.from(value);
+    }
+
+    return <String, dynamic>{};
+  }
+
+  Future<void> _loadRecords({required bool showLoading}) async {
+    if (showLoading && mounted) {
+      setState(() {
+        _isLoading = true;
+        _loadError = null;
+      });
+    }
+
+    try {
+      final List<dynamic> result = await ApiService.getMedicalRecords();
+
+      if (!mounted) return;
+
+      final List<Map<String, dynamic>> loadedRecords = result
+          .map<Map<String, dynamic>>(_toRecordMap)
+          .where((record) => record.isNotEmpty)
+          .toList(growable: false);
+
+      setState(() {
+        _records
+          ..clear()
+          ..addAll(loadedRecords);
+
+        _isLoading = false;
+        _isRefreshing = false;
+        _loadError = null;
+      });
+    } catch (_) {
+      if (!mounted) return;
+
+      setState(() {
+        _isLoading = false;
+        _isRefreshing = false;
+        _loadError = AppStrings.failedLoadRecords;
+      });
+    }
+  }
+
+  Future<void> refreshRecords() async {
+    if (_isRefreshing) return;
+
     setState(() {
-      recordsFuture = ApiService.getMedicalRecords();
+      _isRefreshing = true;
+      _loadError = null;
     });
+
+    await _loadRecords(showLoading: false);
   }
 
   Future<void> deleteRecord(int recordId) async {
+    if (recordId <= 0) return;
+
+    final int index = _records.indexWhere(
+          (record) =>
+      int.tryParse(record['recordId']?.toString() ?? '0') == recordId,
+    );
+
+    if (index < 0) return;
+
+    final Map<String, dynamic> removedRecord =
+    Map<String, dynamic>.from(_records[index]);
+
+    setState(() {
+      _records.removeAt(index);
+    });
+
     try {
       await ApiService.deleteMedicalRecord(recordId);
 
       if (!mounted) return;
-
-      refreshRecords();
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(AppStrings.recordDeleted)),
       );
     } catch (_) {
       if (!mounted) return;
+
+      setState(() {
+        final int safeIndex =
+        index.clamp(0, _records.length).toInt();
+        _records.insert(safeIndex, removedRecord);
+      });
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(AppStrings.failedLoadRecords)),
@@ -48,9 +130,9 @@ class _ManageMedicalRecordsScreenState
   }
 
   Future<void> confirmDelete(int recordId) async {
-    final confirm = await showDialog<bool>(
+    final bool? confirm = await showDialog<bool>(
       context: context,
-      builder: (_) => Directionality(
+      builder: (dialogContext) => Directionality(
         textDirection:
         AppStrings.isArabic ? TextDirection.rtl : TextDirection.ltr,
         child: AlertDialog(
@@ -66,11 +148,11 @@ class _ManageMedicalRecordsScreenState
           ),
           actions: [
             TextButton(
-              onPressed: () => Navigator.pop(context, false),
+              onPressed: () => Navigator.pop(dialogContext, false),
               child: Text(AppStrings.cancel),
             ),
             TextButton(
-              onPressed: () => Navigator.pop(context, true),
+              onPressed: () => Navigator.pop(dialogContext, true),
               child: Text(
                 AppStrings.delete,
                 style: const TextStyle(color: Colors.red),
@@ -86,15 +168,81 @@ class _ManageMedicalRecordsScreenState
     }
   }
 
+  String _textValue(
+      Map<String, dynamic> record,
+      String key, {
+        String fallback = '',
+      }) {
+    final String value = record[key]?.toString().trim() ?? '';
+    return value.isEmpty ? fallback : value;
+  }
+
+  Widget _buildLoading() {
+    return const Center(
+      child: CircularProgressIndicator(color: primary),
+    );
+  }
+
+  Widget _buildError() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              _loadError ?? AppStrings.failedLoadRecords,
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: Colors.red),
+            ),
+            const SizedBox(height: 12),
+            FilledButton.icon(
+              onPressed: _isRefreshing ? null : refreshRecords,
+              icon: const Icon(Icons.refresh),
+              label: Text(AppStrings.isArabic ? 'إعادة المحاولة' : 'Try again'),
+              style: FilledButton.styleFrom(backgroundColor: primary),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEmpty() {
+    return RefreshIndicator(
+      color: primary,
+      onRefresh: refreshRecords,
+      child: ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        children: [
+          SizedBox(
+            height: MediaQuery.sizeOf(context).height * 0.65,
+            child: Center(
+              child: Text(
+                AppStrings.noMedicalRecordsFound,
+                textAlign: TextAlign.center,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    const primary = Color(0xff5B2EFF);
+    final bool isArabic = AppStrings.isArabic;
+    final TextDirection textDirection =
+    isArabic ? TextDirection.rtl : TextDirection.ltr;
+    final TextAlign textAlign =
+    isArabic ? TextAlign.right : TextAlign.left;
+    final CrossAxisAlignment crossAxisAlignment =
+    isArabic ? CrossAxisAlignment.end : CrossAxisAlignment.start;
 
     return Directionality(
-      textDirection:
-      AppStrings.isArabic ? TextDirection.rtl : TextDirection.ltr,
+      textDirection: textDirection,
       child: Scaffold(
-        backgroundColor: const Color(0xffF7F8FC),
+        backgroundColor: background,
         appBar: AppBar(
           title: Text(AppStrings.manageMedicalRecords),
           backgroundColor: Colors.white,
@@ -102,213 +250,252 @@ class _ManageMedicalRecordsScreenState
           elevation: 0,
           actions: [
             IconButton(
-              tooltip: AppStrings.isArabic ? 'تحديث' : 'Refresh',
-              icon: const Icon(Icons.refresh),
-              onPressed: refreshRecords,
+              tooltip: isArabic ? 'تحديث' : 'Refresh',
+              onPressed: _isRefreshing ? null : refreshRecords,
+              icon: _isRefreshing
+                  ? const SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: primary,
+                ),
+              )
+                  : const Icon(Icons.refresh),
             ),
           ],
         ),
-        body: FutureBuilder<List<dynamic>>(
-          future: recordsFuture,
-          builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting) {
-              return const Center(
-                child: CircularProgressIndicator(),
-              );
-            }
-
-            if (snapshot.hasError) {
-              return Center(
-                child: Text(
-                  AppStrings.failedLoadRecords,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(color: Colors.red),
-                ),
-              );
-            }
-
-            final records = snapshot.data ?? [];
-
-            if (records.isEmpty) {
-              return Center(
-                child: Text(
-                  AppStrings.noMedicalRecordsFound,
-                  textAlign: TextAlign.center,
-                ),
-              );
-            }
-
-            return ListView.builder(
-              padding: const EdgeInsets.all(18),
-              itemCount: records.length,
-              itemBuilder: (context, index) {
-                final record = records[index];
-
-                final recordId = int.tryParse(
-                  record['recordId']?.toString() ?? '0',
-                ) ??
-                    0;
-
-                final title =
-                    record['title']?.toString() ??
-                        AppStrings.medicalRecord;
-
-                final description =
-                    record['description']?.toString() ?? '';
-
-                final patientId =
-                    record['patientId']?.toString() ?? '';
-
-                final doctorId =
-                    record['doctorId']?.toString() ?? '';
-
-                final recordDate =
-                    record['recordDate']?.toString() ?? '';
-
-                final status =
-                    record['status']?.toString() ?? '';
-
-                return Container(
-                  margin: const EdgeInsets.only(bottom: 16),
-                  padding: const EdgeInsets.all(18),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(22),
-                  ),
-                  child: Row(
-                    textDirection: AppStrings.isArabic
-                        ? TextDirection.rtl
-                        : TextDirection.ltr,
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      const CircleAvatar(
-                        radius: 30,
-                        backgroundColor: Color(0xffEDE7FF),
-                        child: Icon(
-                          Icons.description,
-                          color: primary,
-                        ),
-                      ),
-                      const SizedBox(width: 14),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: AppStrings.isArabic
-                              ? CrossAxisAlignment.end
-                              : CrossAxisAlignment.start,
-                          children: [
-                            SizedBox(
-                              width: double.infinity,
-                              child: Text(
-                                title,
-                                textDirection: AppStrings.isArabic
-                                    ? TextDirection.rtl
-                                    : TextDirection.ltr,
-                                textAlign: AppStrings.isArabic
-                                    ? TextAlign.right
-                                    : TextAlign.left,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  fontSize: 17,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            SizedBox(
-                              width: double.infinity,
-                              child: Text(
-                                description,
-                                textDirection: AppStrings.isArabic
-                                    ? TextDirection.rtl
-                                    : TextDirection.ltr,
-                                textAlign: AppStrings.isArabic
-                                    ? TextAlign.right
-                                    : TextAlign.left,
-                                maxLines: 3,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  color: Colors.grey,
-                                  height: 1.4,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            SizedBox(
-                              width: double.infinity,
-                              child: Text(
-                                '${AppStrings.patientId}: $patientId',
-                                textDirection: AppStrings.isArabic
-                                    ? TextDirection.rtl
-                                    : TextDirection.ltr,
-                                textAlign: AppStrings.isArabic
-                                    ? TextAlign.right
-                                    : TextAlign.left,
-                              ),
-                            ),
-                            const SizedBox(height: 3),
-                            SizedBox(
-                              width: double.infinity,
-                              child: Text(
-                                '${AppStrings.doctorId}: $doctorId',
-                                textDirection: AppStrings.isArabic
-                                    ? TextDirection.rtl
-                                    : TextDirection.ltr,
-                                textAlign: AppStrings.isArabic
-                                    ? TextAlign.right
-                                    : TextAlign.left,
-                              ),
-                            ),
-                            const SizedBox(height: 6),
-                            SizedBox(
-                              width: double.infinity,
-                              child: Text(
-                                recordDate,
-                                textDirection: TextDirection.ltr,
-                                textAlign: AppStrings.isArabic
-                                    ? TextAlign.right
-                                    : TextAlign.left,
-                                style: const TextStyle(
-                                  color: Colors.black54,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: 6),
-                            SizedBox(
-                              width: double.infinity,
-                              child: Text(
-                                status,
-                                textDirection: AppStrings.isArabic
-                                    ? TextDirection.rtl
-                                    : TextDirection.ltr,
-                                textAlign: AppStrings.isArabic
-                                    ? TextAlign.right
-                                    : TextAlign.left,
-                                style: const TextStyle(
-                                  color: primary,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      IconButton(
-                        tooltip: AppStrings.delete,
-                        icon: const Icon(
-                          Icons.delete,
-                          color: Colors.red,
-                        ),
-                        onPressed: () => confirmDelete(recordId),
-                      ),
-                    ],
-                  ),
-                );
-              },
-            );
-          },
+        body: _buildBody(
+          textDirection: textDirection,
+          textAlign: textAlign,
+          crossAxisAlignment: crossAxisAlignment,
         ),
+      ),
+    );
+  }
+
+  Widget _buildBody({
+    required TextDirection textDirection,
+    required TextAlign textAlign,
+    required CrossAxisAlignment crossAxisAlignment,
+  }) {
+    if (_isLoading) {
+      return _buildLoading();
+    }
+
+    if (_loadError != null && _records.isEmpty) {
+      return _buildError();
+    }
+
+    if (_records.isEmpty) {
+      return _buildEmpty();
+    }
+
+    return RefreshIndicator(
+      color: primary,
+      onRefresh: refreshRecords,
+      child: ListView.builder(
+        padding: const EdgeInsets.all(18),
+        physics: const AlwaysScrollableScrollPhysics(
+          parent: BouncingScrollPhysics(),
+        ),
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+        cacheExtent: 450,
+        itemCount: _records.length,
+        itemBuilder: (context, index) {
+          final Map<String, dynamic> record = _records[index];
+
+          final int recordId =
+              int.tryParse(record['recordId']?.toString() ?? '0') ?? 0;
+
+          final String title = _textValue(
+            record,
+            'title',
+            fallback: AppStrings.medicalRecord,
+          );
+
+          final String description = _textValue(record, 'description');
+          final String patientId = _textValue(record, 'patientId');
+          final String doctorId = _textValue(record, 'doctorId');
+          final String recordDate = _textValue(record, 'recordDate');
+          final String status = _textValue(record, 'status');
+
+          return _MedicalRecordCard(
+            key: ValueKey<int>(recordId),
+            title: title,
+            description: description,
+            patientId: patientId,
+            doctorId: doctorId,
+            recordDate: recordDate,
+            status: status,
+            recordId: recordId,
+            textDirection: textDirection,
+            textAlign: textAlign,
+            crossAxisAlignment: crossAxisAlignment,
+            onDelete: recordId > 0 ? () => confirmDelete(recordId) : null,
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _MedicalRecordCard extends StatelessWidget {
+  const _MedicalRecordCard({
+    super.key,
+    required this.title,
+    required this.description,
+    required this.patientId,
+    required this.doctorId,
+    required this.recordDate,
+    required this.status,
+    required this.recordId,
+    required this.textDirection,
+    required this.textAlign,
+    required this.crossAxisAlignment,
+    required this.onDelete,
+  });
+
+  static const Color primary = Color(0xff5B2EFF);
+
+  final String title;
+  final String description;
+  final String patientId;
+  final String doctorId;
+  final String recordDate;
+  final String status;
+  final int recordId;
+  final TextDirection textDirection;
+  final TextAlign textAlign;
+  final CrossAxisAlignment crossAxisAlignment;
+  final VoidCallback? onDelete;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(22),
+      ),
+      child: Row(
+        textDirection: textDirection,
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          const CircleAvatar(
+            radius: 30,
+            backgroundColor: Color(0xffEDE7FF),
+            child: Icon(
+              Icons.description,
+              color: primary,
+            ),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: crossAxisAlignment,
+              children: [
+                _RecordText(
+                  text: title,
+                  textDirection: textDirection,
+                  textAlign: textAlign,
+                  maxLines: 1,
+                  style: const TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                if (description.isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  _RecordText(
+                    text: description,
+                    textDirection: textDirection,
+                    textAlign: textAlign,
+                    maxLines: 3,
+                    style: const TextStyle(
+                      color: Colors.grey,
+                      height: 1.4,
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 8),
+                _RecordText(
+                  text: '${AppStrings.patientId}: $patientId',
+                  textDirection: textDirection,
+                  textAlign: textAlign,
+                ),
+                const SizedBox(height: 3),
+                _RecordText(
+                  text: '${AppStrings.doctorId}: $doctorId',
+                  textDirection: textDirection,
+                  textAlign: textAlign,
+                ),
+                if (recordDate.isNotEmpty) ...[
+                  const SizedBox(height: 6),
+                  _RecordText(
+                    text: recordDate,
+                    textDirection: TextDirection.ltr,
+                    textAlign: textAlign,
+                    style: const TextStyle(color: Colors.black54),
+                  ),
+                ],
+                if (status.isNotEmpty) ...[
+                  const SizedBox(height: 6),
+                  _RecordText(
+                    text: status,
+                    textDirection: textDirection,
+                    textAlign: textAlign,
+                    style: const TextStyle(
+                      color: primary,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          IconButton(
+            tooltip: AppStrings.delete,
+            icon: const Icon(
+              Icons.delete,
+              color: Colors.red,
+            ),
+            onPressed: onDelete,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _RecordText extends StatelessWidget {
+  const _RecordText({
+    required this.text,
+    required this.textDirection,
+    required this.textAlign,
+    this.maxLines,
+    this.style,
+  });
+
+  final String text;
+  final TextDirection textDirection;
+  final TextAlign textAlign;
+  final int? maxLines;
+  final TextStyle? style;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: double.infinity,
+      child: Text(
+        text,
+        textDirection: textDirection,
+        textAlign: textAlign,
+        maxLines: maxLines,
+        overflow: maxLines == null ? null : TextOverflow.ellipsis,
+        style: style,
       ),
     );
   }
