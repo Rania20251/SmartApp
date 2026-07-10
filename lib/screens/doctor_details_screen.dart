@@ -39,6 +39,7 @@ class _DoctorDetailsScreenState extends State<DoctorDetailsScreen> {
   int selectedTime = 1;
   bool isFavorite = false;
   bool isBooked = false;
+  bool isBooking = false;
 
   late final List<DateTime> dates;
   late final String shownName;
@@ -121,86 +122,21 @@ class _DoctorDetailsScreenState extends State<DoctorDetailsScreen> {
       return 'assets/images/profile.jpg';
     }
 
-    return ApiService.fixImageUrl(image);
+    final fixedImage = ApiService.fixImageUrl(image).trim();
+
+    if (fixedImage.isEmpty || fixedImage == 'string') {
+      return 'assets/images/profile.jpg';
+    }
+
+    return fixedImage;
   }
 
   String translateDoctorName(String name) {
-    if (!AppStrings.isArabic) return name;
-
-    final value = name.toLowerCase().trim();
-
-    if (value.contains('ahmad ali') || value.contains('ahmed ali')) {
-      return 'د. أحمد علي';
-    }
-
-    if (value.contains('sarah ahmad') || value.contains('sara ahmad')) {
-      return 'د. سارة أحمد';
-    }
-
-    return name
-        .replaceAll('Dr.', 'د.')
-        .replaceAll('dr.', 'د.')
-        .replaceAll('Ahmad', 'أحمد')
-        .replaceAll('Ahmed', 'أحمد')
-        .replaceAll('Ali', 'علي')
-        .replaceAll('Sara', 'سارة')
-        .replaceAll('Sarah', 'سارة')
-        .replaceAll('Mohammad', 'محمد')
-        .replaceAll('Mohammed', 'محمد')
-        .replaceAll('Omar', 'عمر')
-        .replaceAll('Nour', 'نور');
+    return AppStrings.doctorNameByLanguage(name);
   }
 
   String translateSpecialty(String specialty) {
-    final value = specialty.toLowerCase().trim();
-
-    if (!AppStrings.isArabic) return specialty;
-
-    if (value.contains('cardiology') ||
-        value.contains('heart') ||
-        value.contains('قلب')) {
-      return 'القلب';
-    }
-
-    if (value.contains('dentistry') ||
-        value.contains('dental') ||
-        value.contains('أسنان') ||
-        value.contains('اسنان')) {
-      return 'الأسنان';
-    }
-
-    if (value.contains('neurology') ||
-        value.contains('neuro') ||
-        value.contains('أعصاب') ||
-        value.contains('اعصاب')) {
-      return 'الأعصاب';
-    }
-
-    if (value.contains('pediatrics') ||
-        value.contains('pedia') ||
-        value.contains('child') ||
-        value.contains('أطفال') ||
-        value.contains('اطفال')) {
-      return 'الأطفال';
-    }
-
-    if (value.contains('dermatology') ||
-        value.contains('derma') ||
-        value.contains('جلدية')) {
-      return 'الجلدية';
-    }
-
-    if (value.contains('ophthalmology') ||
-        value.contains('eye') ||
-        value.contains('عيون')) {
-      return 'العيون';
-    }
-
-    if (value.contains('surgery') || value.contains('جراحة')) {
-      return 'الجراحة';
-    }
-
-    return specialty;
+    return AppStrings.specialtyByLanguage(specialty);
   }
 
   String dayName(DateTime date) {
@@ -301,11 +237,26 @@ class _DoctorDetailsScreenState extends State<DoctorDetailsScreen> {
   }
 
   Future<void> bookAppointment() async {
+    if (isBooking) return;
+
+    final patientId = UserSession.userId ?? 0;
+
+    if (patientId <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(AppStrings.appointmentFailed)),
+      );
+      return;
+    }
+
+    setState(() {
+      isBooking = true;
+    });
+
     try {
       final appointmentDate = selectedAppointmentDateTime();
 
       await ApiService.bookAppointment(
-        patientId: UserSession.userId ?? 1,
+        patientId: patientId,
         doctorId: widget.doctorId,
         appointmentDate: appointmentDate,
       );
@@ -319,12 +270,30 @@ class _DoctorDetailsScreenState extends State<DoctorDetailsScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(AppStrings.appointmentBooked)),
       );
+    } on AppointmentSlotTakenException {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            AppStrings.isArabic
+                ? 'هذا الموعد غير متاح، اختاري وقتًا آخر.'
+                : 'This appointment is unavailable. Please choose another time.',
+          ),
+        ),
+      );
     } catch (_) {
       if (!mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(AppStrings.appointmentFailed)),
       );
+    } finally {
+      if (mounted) {
+        setState(() {
+          isBooking = false;
+        });
+      }
     }
   }
 
@@ -382,58 +351,73 @@ class _DoctorDetailsScreenState extends State<DoctorDetailsScreen> {
                   Expanded(
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                      crossAxisAlignment: AppStrings.isArabic
+                          ? CrossAxisAlignment.end
+                          : CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          shownName,
-                          textDirection: AppStrings.isArabic
-                              ? TextDirection.rtl
-                              : TextDirection.ltr,
-                          textAlign: AppStrings.isArabic
-                              ? TextAlign.right
-                              : TextAlign.left,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontSize: 21,
-                            height: 1.15,
-                            fontWeight: FontWeight.bold,
+                        SizedBox(
+                          width: double.infinity,
+                          child: Text(
+                            shownName,
+                            textDirection: AppStrings.isArabic
+                                ? TextDirection.rtl
+                                : TextDirection.ltr,
+                            textAlign: AppStrings.isArabic
+                                ? TextAlign.right
+                                : TextAlign.left,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 21,
+                              height: 1.15,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
                         ),
                         const SizedBox(height: 5),
-                        Text(
-                          shownSpecialty,
-                          textDirection: AppStrings.isArabic
-                              ? TextDirection.rtl
-                              : TextDirection.ltr,
-                          textAlign: AppStrings.isArabic
-                              ? TextAlign.right
-                              : TextAlign.left,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(color: Colors.grey),
+                        SizedBox(
+                          width: double.infinity,
+                          child: Text(
+                            shownSpecialty,
+                            textDirection: AppStrings.isArabic
+                                ? TextDirection.rtl
+                                : TextDirection.ltr,
+                            textAlign: AppStrings.isArabic
+                                ? TextAlign.right
+                                : TextAlign.left,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(color: Colors.grey),
+                          ),
                         ),
                         const SizedBox(height: 8),
-                        Directionality(
-                          textDirection: TextDirection.ltr,
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const Icon(
-                                Icons.star,
-                                color: Colors.orange,
-                                size: 18,
-                              ),
-                              Text(' ${widget.rating}'),
-                              const SizedBox(width: 6),
-                              Text(
-                                AppStrings.isArabic ? '(120 تقييم)' : '(120 reviews)',
-                                style: const TextStyle(
-                                  color: Colors.grey,
-                                  fontSize: 12,
+                        Align(
+                          alignment: AppStrings.isArabic
+                              ? Alignment.centerRight
+                              : Alignment.centerLeft,
+                          child: Directionality(
+                            textDirection: TextDirection.ltr,
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(
+                                  Icons.star,
+                                  color: Colors.orange,
+                                  size: 18,
                                 ),
-                              ),
-                            ],
+                                Text(' ${widget.rating}'),
+                                const SizedBox(width: 6),
+                                Text(
+                                  AppStrings.isArabic
+                                      ? '(120 تقييم)'
+                                      : '(120 reviews)',
+                                  style: const TextStyle(
+                                    color: Colors.grey,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
                         ),
                       ],
@@ -588,14 +572,33 @@ class _DoctorDetailsScreenState extends State<DoctorDetailsScreen> {
                     borderRadius: BorderRadius.circular(16),
                   ),
                 ),
-                icon: Icon(isBooked ? Icons.check_circle : Icons.calendar_month),
-                label: Text(
+                icon: isBooking
+                    ? const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Colors.white,
+                  ),
+                )
+                    : Icon(
                   isBooked
-                      ? (AppStrings.isArabic ? 'تم الحجز' : 'Booked')
+                      ? Icons.check_circle
+                      : Icons.calendar_month,
+                ),
+                label: Text(
+                  isBooking
+                      ? (AppStrings.isArabic
+                      ? 'جاري الحجز...'
+                      : 'Booking...')
+                      : isBooked
+                      ? (AppStrings.isArabic
+                      ? 'تم الحجز'
+                      : 'Booked')
                       : AppStrings.bookAppointment,
                   style: const TextStyle(fontSize: 17),
                 ),
-                onPressed: bookAppointment,
+                onPressed: isBooking ? null : bookAppointment,
               ),
             ),
           ],

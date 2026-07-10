@@ -102,14 +102,17 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
     setState(() => isLoading = true);
 
     try {
+      final patientId = UserSession.userId ?? 0;
+
+      if (patientId <= 0) {
+        throw Exception('Invalid patient id');
+      }
+
       await ApiService.bookAppointment(
-        patientId: UserSession.userId ?? 1,
+        patientId: patientId,
         doctorId: selectedDoctorId!,
         appointmentDate: getFinalAppointmentDate(),
       );
-
-      ApiService.resetAppointmentsCache();
-      ApiService.clearNotificationsCache();
 
       if (!mounted) return;
 
@@ -118,14 +121,22 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(AppStrings.appointmentBooked)),
       );
+    } on AppointmentSlotTakenException {
+      if (mounted) {
+        showMessage(
+          AppStrings.isArabic
+              ? 'هذا الموعد غير متاح، اختاري وقتًا آخر.'
+              : 'This appointment is unavailable. Please choose another time.',
+        );
+      }
     } catch (_) {
       if (mounted) {
         showMessage(AppStrings.appointmentFailed);
       }
-    }
-
-    if (mounted) {
-      setState(() => isLoading = false);
+    } finally {
+      if (mounted) {
+        setState(() => isLoading = false);
+      }
     }
   }
 

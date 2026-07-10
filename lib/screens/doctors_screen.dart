@@ -85,77 +85,27 @@ class _DoctorsScreenState extends State<DoctorsScreen> {
   }
 
   String translateSpecialty(String name) {
-    final value = name.toLowerCase().trim();
-
-    if (!AppStrings.isArabic) return name;
-
-    if (value.contains('cardiology') || value.contains('heart') || value.contains('قلب')) return 'القلب';
-    if (value.contains('dentistry') || value.contains('dental') || value.contains('dentist') || value.contains('أسنان') || value.contains('اسنان')) return 'الأسنان';
-    if (value.contains('neurology') || value.contains('neuro') || value.contains('أعصاب') || value.contains('اعصاب')) return 'الأعصاب';
-    if (value.contains('pediatrics') || value.contains('pedia') || value.contains('child') || value.contains('أطفال') || value.contains('اطفال')) return 'الأطفال';
-    if (value.contains('dermatology') || value.contains('derma') || value.contains('skin') || value.contains('جلدية')) return 'الجلدية';
-    if (value.contains('ophthalmology') || value.contains('eye') || value.contains('eyes') || value.contains('عيون')) return 'العيون';
-    if (value.contains('surgery') || value.contains('surgeon') || value.contains('جراحة')) return 'الجراحة';
-
-    return name;
+    return AppStrings.specialtyByLanguage(name);
   }
 
   String translateDoctorName(String name) {
-    if (!AppStrings.isArabic) return name;
-
-    final value = name.toLowerCase().trim();
-
-    if (value.contains('ahmad ali') || value.contains('ahmed ali')) {
-      return 'د. أحمد علي';
-    }
-
-    if (value.contains('sarah ahmad') || value.contains('sara ahmad')) {
-      return 'د. سارة أحمد';
-    }
-
-    return name
-        .replaceAll('Dr.', 'د.')
-        .replaceAll('dr.', 'د.')
-        .replaceAll('Ahmad', 'أحمد')
-        .replaceAll('Ahmed', 'أحمد')
-        .replaceAll('Ali', 'علي')
-        .replaceAll('Sara', 'سارة')
-        .replaceAll('Sarah', 'سارة')
-        .replaceAll('Mohammad', 'محمد')
-        .replaceAll('Mohammed', 'محمد')
-        .replaceAll('Omar', 'عمر')
-        .replaceAll('Nour', 'نور');
+    return AppStrings.doctorNameByLanguage(name);
   }
 
   String englishDoctorName(String name) {
-    return name
-        .replaceAll('د.', 'Dr.')
-        .replaceAll('د ', 'Dr. ')
-        .replaceAll('أحمد', 'Ahmad')
-        .replaceAll('احمد', 'Ahmad')
-        .replaceAll('علي', 'Ali')
-        .replaceAll('سارة', 'Sarah')
-        .replaceAll('ساره', 'Sarah')
-        .replaceAll('محمد', 'Mohammad')
-        .replaceAll('عمر', 'Omar')
-        .replaceAll('نور', 'Nour');
+    final oldLocale = AppStrings.currentLocale;
+    AppStrings.currentLocale = const Locale('en');
+    final translated = AppStrings.doctorNameByLanguage(name);
+    AppStrings.currentLocale = oldLocale;
+    return translated;
   }
 
   String arabicDoctorName(String name) {
-    return name
-        .replaceAll('Dr.', 'د.')
-        .replaceAll('dr.', 'د.')
-        .replaceAll('Dr', 'د.')
-        .replaceAll('dr', 'د.')
-        .replaceAll('Ahmad', 'أحمد')
-        .replaceAll('Ahmed', 'أحمد')
-        .replaceAll('Ali', 'علي')
-        .replaceAll('Sarah', 'سارة')
-        .replaceAll('Sara', 'سارة')
-        .replaceAll('Mohammad', 'محمد')
-        .replaceAll('Mohammed', 'محمد')
-        .replaceAll('Omar', 'عمر')
-        .replaceAll('Nour', 'نور');
+    final oldLocale = AppStrings.currentLocale;
+    AppStrings.currentLocale = const Locale('ar');
+    final translated = AppStrings.doctorNameByLanguage(name);
+    AppStrings.currentLocale = oldLocale;
+    return translated;
   }
 
   String removeDoctorTitle(String name) {
@@ -414,6 +364,9 @@ class _DoctorsScreenState extends State<DoctorsScreen> {
                         textDirection: AppStrings.isArabic
                             ? TextDirection.rtl
                             : TextDirection.ltr,
+                        textAlign: AppStrings.isArabic
+                            ? TextAlign.right
+                            : TextAlign.left,
                         onChanged: (value) {
                           setState(() {
                             searchText = value.trim();
@@ -659,42 +612,59 @@ class DoctorListCard extends StatelessWidget {
             Expanded(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
+                crossAxisAlignment: AppStrings.isArabic
+                    ? CrossAxisAlignment.end
+                    : CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    name,
-                    textDirection:
-                    AppStrings.isArabic ? TextDirection.rtl : TextDirection.ltr,
-                    textAlign:
-                    AppStrings.isArabic ? TextAlign.right : TextAlign.left,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontSize: 16,
-                      height: 1.15,
-                      fontWeight: FontWeight.bold,
+                  SizedBox(
+                    width: double.infinity,
+                    child: Text(
+                      name,
+                      textDirection: AppStrings.isArabic
+                          ? TextDirection.rtl
+                          : TextDirection.ltr,
+                      textAlign: AppStrings.isArabic
+                          ? TextAlign.right
+                          : TextAlign.left,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        height: 1.15,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                   ),
                   const SizedBox(height: 4),
-                  Text(
-                    specialty,
-                    textDirection:
-                    AppStrings.isArabic ? TextDirection.rtl : TextDirection.ltr,
-                    textAlign:
-                    AppStrings.isArabic ? TextAlign.right : TextAlign.left,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(color: Colors.grey),
+                  SizedBox(
+                    width: double.infinity,
+                    child: Text(
+                      specialty,
+                      textDirection: AppStrings.isArabic
+                          ? TextDirection.rtl
+                          : TextDirection.ltr,
+                      textAlign: AppStrings.isArabic
+                          ? TextAlign.right
+                          : TextAlign.left,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(color: Colors.grey),
+                    ),
                   ),
                   const SizedBox(height: 6),
-                  const Directionality(
-                    textDirection: TextDirection.ltr,
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.star, color: Colors.orange, size: 16),
-                        Text(' 4.8'),
-                      ],
+                  Align(
+                    alignment: AppStrings.isArabic
+                        ? Alignment.centerRight
+                        : Alignment.centerLeft,
+                    child: const Directionality(
+                      textDirection: TextDirection.ltr,
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.star, color: Colors.orange, size: 16),
+                          Text(' 4.8'),
+                        ],
+                      ),
                     ),
                   ),
                 ],

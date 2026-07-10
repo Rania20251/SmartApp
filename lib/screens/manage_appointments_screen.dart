@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import '../language/app_strings.dart';
 import '../services/api_service.dart';
+import '../services/user_session.dart';
 
 class ManageAppointmentsScreen extends StatefulWidget {
   const ManageAppointmentsScreen({super.key});
@@ -16,91 +17,130 @@ class _ManageAppointmentsScreenState extends State<ManageAppointmentsScreen> {
   static const Color primary = Color(0xff5B2EFF);
   static const Color background = Color(0xffF7F8FC);
 
-  static List<dynamic> cachedAdminAppointments = [];
-
-  bool firstLoadDone = cachedAdminAppointments.isNotEmpty;
+  bool firstLoadDone = false;
   bool isRefreshing = false;
   String? errorMessage;
 
-  List<dynamic> appointments = List<dynamic>.from(cachedAdminAppointments);
+  List<dynamic> appointments = [];
   final Set<String> updatingIds = {};
+
+  int _requestVersion = 0;
+  int? _screenUserId;
 
   @override
   void initState() {
     super.initState();
 
-    appointments = List<dynamic>.from(cachedAdminAppointments);
+    // تحمل مرة واحدة فقط عند فتح الشاشة، ولا يوجد تحديث تلقائي متكرر.
+    _screenUserId = UserSession.userId;
+    ApiService.appointmentsVersion.addListener(
+      _onAppointmentsChanged,
+    );
 
-    if (cachedAdminAppointments.isEmpty) {
-      loadAppointments(firstLoad: true);
-    } else {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) {
-          refreshAppointments();
-        }
-      });
-    }
+    // تحميل واحد عند فتح الشاشة بدون تكرار.
+    loadAppointments(firstLoad: true, forceRefresh: true);
   }
 
-  Future<void> loadAppointments({bool firstLoad = false}) async {
+  void _onAppointmentsChanged() {
+    if (!mounted || isRefreshing) return;
+
+    // يحدث فقط بعد تغيير حقيقي، ولا يوجد Timer أو تحديث متكرر.
+    loadAppointments(
+      firstLoad: false,
+      forceRefresh: false,
+    );
+  }
+
+  @override
+  void dispose() {
+    ApiService.appointmentsVersion.removeListener(
+      _onAppointmentsChanged,
+    );
+
+    // أي طلب قديم يصل بعد إغلاق الشاشة يتم تجاهله.
+    _requestVersion++;
+    super.dispose();
+  }
+
+  Future<void> loadAppointments({
+    bool firstLoad = false,
+    bool forceRefresh = false,
+  }) async {
     if (isRefreshing) return;
+
+    final requestVersion = ++_requestVersion;
+    final requestUserId = UserSession.userId;
 
     if (mounted) {
       setState(() {
         isRefreshing = true;
         errorMessage = null;
+
+        // إذا تغيّر الحساب أثناء بقاء الشاشة مفتوحة، نمسح البيانات فوراً.
+        if (_screenUserId != requestUserId) {
+          _screenUserId = requestUserId;
+          appointments = [];
+          firstLoadDone = false;
+          updatingIds.clear();
+        }
       });
     }
 
     try {
-      final data = await ApiService.getAllAppointments(forceRefresh: true)
-          .timeout(const Duration(seconds: 15));
+      final data = await ApiService.getAllAppointments(
+        forceRefresh: forceRefresh,
+      ).timeout(const Duration(seconds: 12));
 
-      data.sort((a, b) {
-        final dateA =
-        parseDate(valueOf(a, ['appointmentDate', 'AppointmentDate'], ''));
-        final dateB =
-        parseDate(valueOf(b, ['appointmentDate', 'AppointmentDate'], ''));
-        return dateB.compareTo(dateA);
-      });
+      // تجاهل أي نتيجة قديمة أو نتيجة تخص جلسة تغيّرت.
+      if (!mounted ||
+          requestVersion != _requestVersion ||
+          requestUserId != UserSession.userId) {
+        return;
+      }
 
-      if (!mounted) return;
-
-      cachedAdminAppointments = List<dynamic>.from(data);
+      final sorted = List<dynamic>.from(data)
+        ..sort((a, b) {
+          final dateA = parseDate(
+            valueOf(a, ['appointmentDate', 'AppointmentDate'], ''),
+          );
+          final dateB = parseDate(
+            valueOf(b, ['appointmentDate', 'AppointmentDate'], ''),
+          );
+          return dateB.compareTo(dateA);
+        });
 
       setState(() {
-        appointments = List<dynamic>.from(cachedAdminAppointments);
+        appointments = sorted;
         firstLoadDone = true;
         isRefreshing = false;
         errorMessage = null;
       });
     } on TimeoutException {
-      if (!mounted) return;
+      if (!mounted || requestVersion != _requestVersion) return;
 
       setState(() {
-        appointments = List<dynamic>.from(cachedAdminAppointments);
         firstLoadDone = true;
         isRefreshing = false;
-        errorMessage = appointments.isEmpty
-            ? AppStrings.failedLoadAppointments
-            : null;
+        errorMessage =
+        appointments.isEmpty ? AppStrings.failedLoadAppointments : null;
       });
     } catch (_) {
-      if (!mounted) return;
+      if (!mounted || requestVersion != _requestVersion) return;
 
       setState(() {
-        appointments = List<dynamic>.from(cachedAdminAppointments);
         firstLoadDone = true;
         isRefreshing = false;
-        errorMessage = appointments.isEmpty
-            ? AppStrings.failedLoadAppointments
-            : null;
+        errorMessage =
+        appointments.isEmpty ? AppStrings.failedLoadAppointments : null;
       });
     }
   }
 
   Future<void> refreshAppointments() async {
-    await loadAppointments(firstLoad: false);
+    await loadAppointments(
+      firstLoad: false,
+      forceRefresh: true,
+    );
   }
 
   DateTime parseDate(dynamic value) {
@@ -176,57 +216,66 @@ class _ManageAppointmentsScreenState extends State<ManageAppointmentsScreen> {
       current['Status'] = status;
     }
 
-    cachedAdminAppointments = List<dynamic>.from(appointments);
-
-    // يربط التحديث مع شاشة المريض Schedule/Profile
-    ApiService.resetAppointmentsCache();
+    // ApiService.updateAppointmentStatus سيحدّث كاش جميع الشاشات محلياً
+    // بعد نجاح الطلب، لذلك لا نمسح الكاش هنا ولا نعيد تحميل الصفحة.
   }
 
-  void updateStatus(
+  Future<void> updateStatus(
       Map<String, dynamic> appointment,
       String status,
-      ) {
+      ) async {
     final id = appointmentKey(appointment);
 
-    if (updatingIds.contains(id)) return;
+    if (id == '0' || updatingIds.contains(id)) return;
 
-    final oldStatus = valueOf(appointment, ['status', 'Status'], 'Pending');
+    final oldStatus = valueOf(
+      appointment,
+      ['status', 'Status'],
+      'Pending',
+    );
 
-    // التحديث يظهر فوراً بدون انتظار السيرفر
     setState(() {
       updatingIds.add(id);
-      setLocalStatus(id, status);
     });
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('${AppStrings.appointmentMarkedAs} $status')),
-    );
-
-    unawaited(
-      ApiService.updateAppointmentStatus(
+    try {
+      await ApiService.updateAppointmentStatus(
         appointment: appointment,
         status: status,
-      ).timeout(const Duration(seconds: 15)).then((_) {
-        ApiService.resetAppointmentsCache();
+      ).timeout(const Duration(seconds: 15));
 
-        if (!mounted) return;
+      if (!mounted) return;
 
-        setState(() {
-          updatingIds.remove(id);
-        });
-      }).catchError((_) {
-        if (!mounted) return;
+      setState(() {
+        setLocalStatus(id, status);
+        updatingIds.remove(id);
+      });
 
-        setState(() {
-          setLocalStatus(id, oldStatus);
-          updatingIds.remove(id);
-        });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            AppStrings.isArabic
+                ? 'تم تحديث حالة الموعد بنجاح'
+                : 'Appointment status updated successfully',
+          ),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    } catch (_) {
+      if (!mounted) return;
 
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(AppStrings.updateAppointmentFailed)),
-        );
-      }),
-    );
+      setState(() {
+        setLocalStatus(id, oldStatus);
+        updatingIds.remove(id);
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(AppStrings.updateAppointmentFailed),
+          duration: const Duration(seconds: 3),
+        ),
+      );
+    }
   }
 
   Color statusColor(String status) {
@@ -421,33 +470,36 @@ class _ManageAppointmentsScreenState extends State<ManageAppointmentsScreen> {
 
             return AppointmentAdminCard(
               appointmentId: appointmentId,
-              patientName: patientName,
-              doctorName: doctorName,
-              specialty: specialty,
+              patientName:
+              AppStrings.personNameByLanguage(patientName),
+              doctorName:
+              AppStrings.doctorNameByLanguage(doctorName),
+              specialty:
+              AppStrings.specialtyByLanguage(specialty),
               statusText: statusByLanguage(status),
               statusColor: statusColor(status),
               date: formatDate(dateValue),
               time: formatTime(dateValue),
               isUpdating: updatingIds.contains(appointmentId),
-              onConfirm: () {
+              onConfirm: () async {
                 if (appointment is Map) {
-                  updateStatus(
+                  await updateStatus(
                     Map<String, dynamic>.from(appointment),
                     'Confirmed',
                   );
                 }
               },
-              onComplete: () {
+              onComplete: () async {
                 if (appointment is Map) {
-                  updateStatus(
+                  await updateStatus(
                     Map<String, dynamic>.from(appointment),
                     'Completed',
                   );
                 }
               },
-              onCancel: () {
+              onCancel: () async {
                 if (appointment is Map) {
-                  updateStatus(
+                  await updateStatus(
                     Map<String, dynamic>.from(appointment),
                     'Cancelled',
                   );
@@ -456,42 +508,6 @@ class _ManageAppointmentsScreenState extends State<ManageAppointmentsScreen> {
             );
           },
         ),
-        if (isRefreshing)
-          Positioned(
-            top: 8,
-            right: 0,
-            left: 0,
-            child: Center(
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(18),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(.05),
-                      blurRadius: 8,
-                    ),
-                  ],
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const SizedBox(
-                      width: 14,
-                      height: 14,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    ),
-                    const SizedBox(width: 6),
-                    Text(
-                      AppStrings.isArabic ? 'تحديث...' : 'Updating...',
-                      style: const TextStyle(fontSize: 11),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
       ],
     );
   }
@@ -509,8 +525,15 @@ class _ManageAppointmentsScreenState extends State<ManageAppointmentsScreen> {
           elevation: 0,
           actions: [
             IconButton(
-              icon: const Icon(Icons.refresh),
+              tooltip: AppStrings.isArabic ? 'تحديث' : 'Refresh',
               onPressed: isRefreshing ? null : refreshAppointments,
+              icon: isRefreshing && firstLoadDone
+                  ? const SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+                  : const Icon(Icons.refresh),
             ),
           ],
         ),
@@ -562,12 +585,15 @@ class AppointmentAdminCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(22),
       ),
       child: Column(
-        crossAxisAlignment:
-        AppStrings.isArabic ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+        crossAxisAlignment: AppStrings.isArabic
+            ? CrossAxisAlignment.end
+            : CrossAxisAlignment.start,
         children: [
           Row(
             textDirection: AppStrings.isArabic ? TextDirection.rtl : TextDirection.ltr,
-            crossAxisAlignment: CrossAxisAlignment.start,
+            crossAxisAlignment: AppStrings.isArabic
+                ? CrossAxisAlignment.end
+                : CrossAxisAlignment.start,
             children: [
               const CircleAvatar(
                 radius: 27,
@@ -584,13 +610,22 @@ class AppointmentAdminCard extends StatelessWidget {
                       ? CrossAxisAlignment.end
                       : CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      '${AppStrings.appointment} #$appointmentId',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 17,
-                        fontWeight: FontWeight.bold,
+                    SizedBox(
+                      width: double.infinity,
+                      child: Text(
+                        '${AppStrings.appointment} #$appointmentId',
+                        textDirection: AppStrings.isArabic
+                            ? TextDirection.rtl
+                            : TextDirection.ltr,
+                        textAlign: AppStrings.isArabic
+                            ? TextAlign.right
+                            : TextAlign.left,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 17,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                     ),
                     const SizedBox(height: 10),
@@ -660,26 +695,34 @@ class AppointmentAdminCard extends StatelessWidget {
   Widget infoLine(String label, String value) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 5),
-      child: RichText(
-        maxLines: 2,
-        overflow: TextOverflow.ellipsis,
-        textDirection: AppStrings.isArabic ? TextDirection.rtl : TextDirection.ltr,
-        text: TextSpan(
-          style: const TextStyle(
-            color: Colors.grey,
-            fontSize: 14,
-            height: 1.25,
-          ),
-          children: [
-            TextSpan(
-              text: '$label: ',
-              style: const TextStyle(
-                color: Colors.black87,
-                fontWeight: FontWeight.bold,
-              ),
+      child: SizedBox(
+        width: double.infinity,
+        child: RichText(
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          textDirection: AppStrings.isArabic
+              ? TextDirection.rtl
+              : TextDirection.ltr,
+          textAlign: AppStrings.isArabic
+              ? TextAlign.right
+              : TextAlign.left,
+          text: TextSpan(
+            style: const TextStyle(
+              color: Colors.grey,
+              fontSize: 14,
+              height: 1.25,
             ),
-            TextSpan(text: value),
-          ],
+            children: [
+              TextSpan(
+                text: '$label: ',
+                style: const TextStyle(
+                  color: Colors.black87,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              TextSpan(text: value),
+            ],
+          ),
         ),
       ),
     );

@@ -1,15 +1,35 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 import 'user_session.dart';
 
+
+class AppointmentSlotTakenException implements Exception {
+  final String message;
+
+  const AppointmentSlotTakenException(this.message);
+
+  @override
+  String toString() => message;
+}
+
 class ApiService {
+  // يتغير فقط عند حجز/تأكيد/إكمال/إلغاء/حذف موعد.
+  // لا يوجد Timer ولا تحديث تلقائي متكرر.
+  static final ValueNotifier<int> appointmentsVersion =
+  ValueNotifier<int>(0);
+
+  static void notifyAppointmentsChanged() {
+    appointmentsVersion.value++;
+  }
+
   static const String siteUrl = 'http://medlink-rana.premiumasp.net';
   static const String baseUrl = '$siteUrl/api';
 
-  static const Duration normalTimeout = Duration(seconds: 20);
+  static const Duration normalTimeout = Duration(seconds: 12);
   static const Duration uploadTimeout = Duration(seconds: 30);
 
   static final Uri specialtiesUrl = Uri.parse('$baseUrl/Specialties');
@@ -26,13 +46,16 @@ class ApiService {
 
   static List<dynamic>? _doctorsCache;
   static List<dynamic>? _specialtiesCache;
-  static List<dynamic>? _appointmentsCache;
+  // كاش لوحة الأدمن منفصل عن كاش كل مريض.
+  static List<dynamic>? _allAppointmentsCache;
+  static final Map<int, List<dynamic>> _userAppointmentsCache = {};
   static final Map<int, List<dynamic>> _notificationsCache = {};
   static List<dynamic>? _bannersCache;
 
   static Future<List<dynamic>>? _doctorsRequest;
   static Future<List<dynamic>>? _specialtiesRequest;
-  static Future<List<dynamic>>? _appointmentsRequest;
+  static Future<List<dynamic>>? _allAppointmentsRequest;
+  static final Map<int, Future<List<dynamic>>> _userAppointmentsRequests = {};
   static final Map<int, Future<List<dynamic>>> _notificationsRequests = {};
   static Future<List<dynamic>>? _bannersRequest;
 
@@ -47,14 +70,37 @@ class ApiService {
     clearDoctorsCache();
   }
 
-  static void clearAppointmentsCache() {
-    _appointmentsCache = null;
-    _appointmentsRequest = null;
+  static void clearAppointmentsCache([int? userId]) {
+    if (userId != null) {
+      _userAppointmentsCache.remove(userId);
+      _userAppointmentsRequests.remove(userId);
+      return;
+    }
+
+    _allAppointmentsCache = null;
+    _allAppointmentsRequest = null;
+    _userAppointmentsCache.clear();
+    _userAppointmentsRequests.clear();
   }
 
-  static void resetAppointmentsCache() {
-    _appointmentsCache = null;
-    _appointmentsRequest = null;
+  static void resetAppointmentsCache([int? userId]) {
+    clearAppointmentsCache(userId);
+  }
+
+  /// تُستدعى عند نجاح تسجيل الدخول أو تسجيل الخروج حتى لا تنتقل
+  /// أي بيانات خاصة من حساب إلى حساب آخر على نفس الجهاز.
+  static void clearSessionCaches() {
+    clearAppointmentsCache();
+    clearNotificationsCache();
+  }
+
+  /// تنظيف شامل للكاش عند الحاجة.
+  static void clearAllCache() {
+    clearDoctorsCache();
+    clearSpecialtiesCache();
+    clearAppointmentsCache();
+    clearNotificationsCache();
+    clearBannersCache();
   }
 
   static void clearNotificationsCache([int? userId]) {
@@ -84,7 +130,7 @@ class ApiService {
         final response =
         await http.get(bannersUrl, headers: headers).timeout(normalTimeout);
 
-        if (response.statusCode == 200) {
+        if (response.statusCode == 200 || response.statusCode == 201) {
           final data = decodeList(response.body);
 
           final banners = data.map((banner) {
@@ -162,19 +208,51 @@ class ApiService {
   static String fixImageUrl(String image) {
     final value = image.trim();
 
-    if (value.isEmpty || value == 'string') {
+    if (value.isEmpty || value.toLowerCase() == 'string') {
       return 'assets/images/profile.jpg';
     }
 
     if (value.startsWith('data:image')) return value;
-    if (value.startsWith('http://') || value.startsWith('https://')) return value;
-    if (value.startsWith('/')) return '$siteUrl$value';
-    if (value.startsWith('images/') || value.startsWith('uploads/')) {
-      return '$siteUrl/$value';
-    }
     if (value.startsWith('assets/')) return value;
 
-    return value;
+    // لا نغيّر البروتوكول الذي رجع من السيرفر.
+    if (value.startsWith('http://') ||
+        value.startsWith('https://')) {
+      return value;
+    }
+
+    if (value.startsWith('/')) {
+      return '$siteUrl$value';
+    }
+
+    if (value.startsWith('images/') ||
+        value.startsWith('uploads/')) {
+      return '$siteUrl/$value';
+    }
+
+    return '$siteUrl/${value.replaceFirst(RegExp(r'^/+'), '')}';
+  }
+
+  static String withImageCacheVersion(
+      String imageUrl, {
+        Object? version,
+      }) {
+    final value = imageUrl.trim();
+
+    if (value.isEmpty ||
+        value.startsWith('assets/') ||
+        value.startsWith('data:image')) {
+      return value;
+    }
+
+    final uri = Uri.tryParse(value);
+
+    if (uri == null) return value;
+
+    final query = Map<String, String>.from(uri.queryParameters);
+    query['v'] = (version ?? DateTime.now().millisecondsSinceEpoch).toString();
+
+    return uri.replace(queryParameters: query).toString();
   }
 
   static String getSpecialtyName(dynamic doctor) {
@@ -217,7 +295,7 @@ class ApiService {
         final response =
         await http.get(specialtiesUrl, headers: headers).timeout(normalTimeout);
 
-        if (response.statusCode == 200) {
+        if (response.statusCode == 200 || response.statusCode == 201) {
           final data = decodeList(response.body);
 
           final specialties = data.where((item) {
@@ -336,6 +414,8 @@ class ApiService {
       Uri.parse('$baseUrl/Doctors/upload-image'),
     );
 
+    request.headers['Accept'] = 'application/json';
+
     request.files.add(
       http.MultipartFile.fromBytes(
         'file',
@@ -344,12 +424,20 @@ class ApiService {
       ),
     );
 
-    final response = await request.send().timeout(uploadTimeout);
-    final body = await response.stream.bytesToString();
+    final response =
+    await request.send().timeout(uploadTimeout);
 
-    if (response.statusCode == 200) {
+    final body =
+    await response.stream.bytesToString();
+
+    if (response.statusCode == 200 ||
+        response.statusCode == 201) {
       final data = decodeMap(body);
-      final imageUrl = data?['imageUrl']?.toString() ?? '';
+      final imageUrl = (
+          data?['imageUrl'] ??
+              data?['ImageUrl'] ??
+              ''
+      ).toString();
 
       if (imageUrl.isEmpty) {
         throw Exception('Image URL is empty');
@@ -358,7 +446,65 @@ class ApiService {
       return fixImageUrl(imageUrl);
     }
 
-    throw Exception('Failed to upload doctor image: $body');
+    throw Exception(
+      'Failed to upload doctor image '
+          '(${response.statusCode}): $body',
+    );
+  }
+
+  static Future<String> uploadAndSaveDoctorImageBytes({
+    required int doctorId,
+    required Uint8List bytes,
+    required String fileName,
+  }) async {
+    final request = http.MultipartRequest(
+      'POST',
+      Uri.parse(
+        '$baseUrl/Doctors/$doctorId/upload-image',
+      ),
+    );
+
+    request.headers['Accept'] = 'application/json';
+
+    request.files.add(
+      http.MultipartFile.fromBytes(
+        'file',
+        bytes,
+        filename: fileName,
+      ),
+    );
+
+    final response =
+    await request.send().timeout(uploadTimeout);
+
+    final body =
+    await response.stream.bytesToString();
+
+    if (response.statusCode == 200 ||
+        response.statusCode == 201) {
+      final data = decodeMap(body);
+
+      final imageUrl = (
+          data?['imageUrl'] ??
+              data?['ImageUrl'] ??
+              ''
+      ).toString().trim();
+
+      if (imageUrl.isEmpty) {
+        throw Exception(
+          'Image was uploaded but no URL was returned.',
+        );
+      }
+
+      clearDoctorsCache();
+
+      return fixImageUrl(imageUrl);
+    }
+
+    throw Exception(
+      'Failed to save doctor image '
+          '(${response.statusCode}): $body',
+    );
   }
 
   static Future<String> uploadDoctorImage(String filePath) async {
@@ -367,16 +513,26 @@ class ApiService {
       Uri.parse('$baseUrl/Doctors/upload-image'),
     );
 
+    request.headers['Accept'] = 'application/json';
+
     request.files.add(
       await http.MultipartFile.fromPath('file', filePath),
     );
 
-    final response = await request.send().timeout(uploadTimeout);
-    final body = await response.stream.bytesToString();
+    final response =
+    await request.send().timeout(uploadTimeout);
 
-    if (response.statusCode == 200) {
+    final body =
+    await response.stream.bytesToString();
+
+    if (response.statusCode == 200 ||
+        response.statusCode == 201) {
       final data = decodeMap(body);
-      final imageUrl = data?['imageUrl']?.toString() ?? '';
+      final imageUrl = (
+          data?['imageUrl'] ??
+              data?['ImageUrl'] ??
+              ''
+      ).toString();
 
       if (imageUrl.isEmpty) {
         throw Exception('Image URL is empty');
@@ -385,33 +541,79 @@ class ApiService {
       return fixImageUrl(imageUrl);
     }
 
-    throw Exception('Failed to upload doctor image: $body');
+    throw Exception(
+      'Failed to upload doctor image '
+          '(${response.statusCode}): $body',
+    );
   }
 
   static Future<Map<String, dynamic>?> login({
     required String email,
     required String password,
   }) async {
-    try {
-      final response = await http
-          .post(
-        Uri.parse('$baseUrl/Users/login'),
-        headers: headers,
-        body: jsonEncode({
-          'email': email.trim().toLowerCase(),
-          'password': password.trim(),
-        }),
-      )
-          .timeout(normalTimeout);
+    final cleanEmail = email.trim().toLowerCase();
+    final cleanPassword = password.trim();
 
-      if (response.statusCode == 200) {
-        return decodeMap(response.body);
-      }
-
-      return null;
-    } catch (_) {
+    if (cleanEmail.isEmpty || cleanPassword.isEmpty) {
       return null;
     }
+
+    final loginUrls = <Uri>[
+      Uri.parse('http://medlink-rana.premiumasp.net/api/Users/login'),
+      Uri.parse('https://medlink-rana.premiumasp.net/api/Users/login'),
+    ];
+
+    for (final loginUrl in loginUrls) {
+      try {
+        final response = await http
+            .post(
+          loginUrl,
+          headers: headers,
+          body: jsonEncode({
+            'email': cleanEmail,
+            'password': cleanPassword,
+          }),
+        )
+            .timeout(normalTimeout);
+
+        if (response.statusCode == 200) {
+          final user = decodeMap(response.body);
+
+          if (user == null) {
+            continue;
+          }
+
+          final rawUserId =
+              user['userId'] ??
+                  user['UserId'] ??
+                  user['id'] ??
+                  user['Id'];
+
+          final parsedUserId =
+          rawUserId is int
+              ? rawUserId
+              : int.tryParse(rawUserId?.toString() ?? '');
+
+          if (parsedUserId == null || parsedUserId <= 0) {
+            continue;
+          }
+
+          // تصفير بيانات الحساب السابق قبل حفظ المستخدم الجديد.
+          clearSessionCaches();
+
+          return Map<String, dynamic>.from(user);
+        }
+
+        // 401 تعني أن البيانات غير صحيحة، فلا نكرر على رابط آخر.
+        if (response.statusCode == 401) {
+          return null;
+        }
+      } catch (_) {
+        // نجرب الرابط الثاني فقط عند فشل الاتصال.
+      }
+    }
+
+    return null;
   }
 
   static Future<bool> sendResetCode({
@@ -652,7 +854,24 @@ class ApiService {
 
           final doctors = data.map((doctor) {
             if (doctor is Map<String, dynamic>) {
-              doctor['image'] = fixImageUrl(doctor['image']?.toString() ?? '');
+              final rawImage = (
+                  doctor['image'] ??
+                      doctor['Image'] ??
+                      doctor['doctorImage'] ??
+                      doctor['DoctorImage'] ??
+                      ''
+              ).toString();
+
+              final fixedImage = fixImageUrl(rawImage);
+
+              doctor['image'] = forceRefresh
+                  ? withImageCacheVersion(
+                fixedImage,
+                version: DateTime.now()
+                    .millisecondsSinceEpoch,
+              )
+                  : fixedImage;
+
               doctor['specialty'] = getSpecialtyName(doctor);
             }
             return doctor;
@@ -689,17 +908,38 @@ class ApiService {
     }).toList();
   }
 
-  static Future<dynamic> getDoctorById(int id) async {
+  static Future<dynamic> getDoctorById(
+      int id, {
+        bool forceRefresh = false,
+      }) async {
     try {
+      final uri = Uri.parse('$baseUrl/Doctors/$id').replace(
+        queryParameters: forceRefresh
+            ? {
+          'v': DateTime.now()
+              .millisecondsSinceEpoch
+              .toString(),
+        }
+            : null,
+      );
+
       final response = await http
-          .get(Uri.parse('$baseUrl/Doctors/$id'), headers: headers)
+          .get(uri, headers: headers)
           .timeout(normalTimeout);
 
       if (response.statusCode == 200) {
         final data = decodeMap(response.body);
 
         if (data != null) {
-          data['image'] = fixImageUrl(data['image']?.toString() ?? '');
+          final rawImage = (
+              data['image'] ??
+                  data['Image'] ??
+                  data['doctorImage'] ??
+                  data['DoctorImage'] ??
+                  ''
+          ).toString();
+
+          data['image'] = fixImageUrl(rawImage);
           data['specialty'] = getSpecialtyName(data);
         }
 
@@ -722,7 +962,7 @@ class ApiService {
     final cleanName = fullName.trim();
     final cleanPhone = phoneNumber.trim();
     final cleanEmail = email.trim();
-    final cleanImage = image.trim().isEmpty ? '' : fixImageUrl(image);
+    final cleanImage = image.trim();
 
     if (cleanName.isEmpty) {
       throw Exception('Doctor name is required');
@@ -762,6 +1002,8 @@ class ApiService {
     required String email,
     required String image,
   }) async {
+    final cleanImage = image.trim();
+
     final response = await http
         .put(
       Uri.parse('$baseUrl/Doctors/$doctorId'),
@@ -772,16 +1014,49 @@ class ApiService {
         'specialtyId': specialtyId,
         'phoneNumber': phoneNumber.trim(),
         'email': email.trim(),
-        'image': fixImageUrl(image),
+        'image': cleanImage,
       }),
     )
         .timeout(normalTimeout);
 
-    if (response.statusCode != 200 && response.statusCode != 204) {
-      throw Exception('Failed to update doctor: ${response.body}');
+    if (response.statusCode != 200 &&
+        response.statusCode != 204) {
+      throw Exception(
+        'Failed to update doctor '
+            '(${response.statusCode}): ${response.body}',
+      );
     }
 
     clearDoctorsCache();
+  }
+
+  static Future<Map<String, dynamic>> uploadAndSaveDoctorImage({
+    required int doctorId,
+    required String fullName,
+    required int specialtyId,
+    required String phoneNumber,
+    required String email,
+    required Uint8List bytes,
+    required String fileName,
+  }) async {
+    await uploadAndSaveDoctorImageBytes(
+      doctorId: doctorId,
+      bytes: bytes,
+      fileName: fileName,
+    );
+
+    final refreshed = await getDoctorById(
+      doctorId,
+      forceRefresh: true,
+    );
+
+    if (refreshed is! Map) {
+      throw Exception(
+        'Doctor image was saved but the doctor could not be reloaded.',
+      );
+    }
+
+    return Map<String, dynamic>.from(refreshed);
   }
 
   static Future<void> deleteDoctor(int doctorId) async {
@@ -801,11 +1076,20 @@ class ApiService {
     required int doctorId,
     required DateTime appointmentDate,
   }) async {
+    if (patientId <= 0) {
+      throw Exception('Invalid patient id');
+    }
+
+    if (doctorId <= 0) {
+      throw Exception('Invalid doctor id');
+    }
+
     final response = await http
         .post(
       appointmentsUrl,
       headers: headers,
       body: jsonEncode({
+        'appointmentId': 0,
         'patientId': patientId,
         'doctorId': doctorId,
         'appointmentDate': appointmentDate.toIso8601String(),
@@ -814,23 +1098,46 @@ class ApiService {
     )
         .timeout(normalTimeout);
 
-    if (response.statusCode != 200 && response.statusCode != 201) {
-      throw Exception('Failed to book appointment');
+    if (response.statusCode == 409) {
+      String message =
+          'This appointment time is already booked.';
+
+      try {
+        final decoded = jsonDecode(response.body);
+
+        if (decoded is Map && decoded['message'] != null) {
+          message = decoded['message'].toString();
+        }
+      } catch (_) {}
+
+      throw AppointmentSlotTakenException(message);
     }
 
-    resetAppointmentsCache();
+    if (response.statusCode != 200 && response.statusCode != 201) {
+      throw Exception(
+        'Failed to book appointment: '
+            '${response.statusCode} ${response.body}',
+      );
+    }
+
+    // امسح كاش لوحة الأدمن وكاش المريض الحالي معًا.
+    _allAppointmentsCache = null;
+    _allAppointmentsRequest = null;
+    _userAppointmentsCache.remove(patientId);
+    _userAppointmentsRequests.remove(patientId);
     clearNotificationsCache(patientId);
+    notifyAppointmentsChanged();
   }
 
   static Future<List<dynamic>> getAllAppointments({
     bool forceRefresh = false,
   }) async {
-    if (!forceRefresh && _appointmentsCache != null) {
-      return _appointmentsCache!;
+    if (!forceRefresh && _allAppointmentsCache != null) {
+      return List<dynamic>.from(_allAppointmentsCache!);
     }
 
-    if (_appointmentsRequest != null) {
-      return _appointmentsRequest!;
+    if (!forceRefresh && _allAppointmentsRequest != null) {
+      return _allAppointmentsRequest!;
     }
 
     final request = (() async {
@@ -839,65 +1146,210 @@ class ApiService {
             .get(appointmentsUrl, headers: headers)
             .timeout(normalTimeout);
 
-        if (response.statusCode == 200) {
-          final data = decodeList(response.body);
-
-          final appointments = data.map((appointment) {
-            if (appointment is Map<String, dynamic>) {
-              final doctorImage = appointment['doctorImage'] ??
-                  appointment['DoctorImage'] ??
-                  appointment['image'] ??
-                  appointment['Image'];
-
-              final fixedImage = fixImageUrl(doctorImage?.toString() ?? '');
-
-              appointment['doctorImage'] = fixedImage;
-              appointment['DoctorImage'] = fixedImage;
-              appointment['image'] = fixedImage;
-            }
-
-            return appointment;
-          }).toList();
-
-          // Important for mobile:
-          // Do not replace a good cached list with an empty list during refresh.
-          // Sometimes the hosting is slow and returns late/empty while the UI is refreshing.
-          if (appointments.isNotEmpty || _appointmentsCache == null) {
-            _appointmentsCache = appointments;
+        if (response.statusCode != 200) {
+          if (_allAppointmentsCache != null) {
+            return List<dynamic>.from(_allAppointmentsCache!);
           }
 
-          return _appointmentsCache ?? appointments;
+          throw Exception(
+            'Failed to load appointments: '
+                '${response.statusCode} ${response.body}',
+          );
         }
 
-        return _appointmentsCache ?? [];
+        final decoded = jsonDecode(response.body);
+
+        if (decoded is! List) {
+          throw Exception('Appointments response is not a list');
+        }
+
+        final appointments = decoded.map<dynamic>((appointment) {
+          if (appointment is! Map) return appointment;
+
+          final copy = Map<String, dynamic>.from(appointment);
+
+          final doctorImage = copy['doctorImage'] ??
+              copy['DoctorImage'] ??
+              copy['image'] ??
+              copy['Image'];
+
+          final fixedImage = fixImageUrl(
+            doctorImage?.toString() ?? '',
+          );
+
+          copy['doctorImage'] = fixedImage;
+          copy['DoctorImage'] = fixedImage;
+          copy['image'] = fixedImage;
+
+          return copy;
+        }).toList();
+
+        _allAppointmentsCache =
+        List<dynamic>.from(appointments);
+
+        _rebuildUserAppointmentCaches(appointments);
+
+        return List<dynamic>.from(appointments);
       } catch (_) {
-        return _appointmentsCache ?? [];
+        if (_allAppointmentsCache != null) {
+          return List<dynamic>.from(_allAppointmentsCache!);
+        }
+
+        rethrow;
       } finally {
-        _appointmentsRequest = null;
+        _allAppointmentsRequest = null;
       }
     })();
 
-    _appointmentsRequest = request;
+    _allAppointmentsRequest = request;
     return request;
   }
 
   static Future<List<dynamic>> getAppointments({
     bool forceRefresh = false,
   }) async {
-    try {
-      final appointments = await getAllAppointments(forceRefresh: forceRefresh);
+    final userId = UserSession.userId;
 
-      if (UserSession.userId == null) return appointments;
-
-      final currentUserId = UserSession.userId.toString();
-
-      return appointments.where((appointment) {
-        return appointment['patientId']?.toString() == currentUserId ||
-            appointment['PatientId']?.toString() == currentUserId;
-      }).toList();
-    } catch (_) {
-      return [];
+    if (userId == null || userId <= 0) {
+      return <dynamic>[];
     }
+
+    if (!forceRefresh &&
+        _userAppointmentsCache.containsKey(userId)) {
+      return List<dynamic>.from(
+        _userAppointmentsCache[userId]!,
+      );
+    }
+
+    if (!forceRefresh &&
+        _userAppointmentsRequests.containsKey(userId)) {
+      return _userAppointmentsRequests[userId]!;
+    }
+
+    final request = (() async {
+      try {
+        // الطلب المباشر يمنع تحميل مواعيد مستخدمين آخرين
+        // ويلغي الحاجة إلى فلترة جميع المواعيد في Flutter.
+        final response = await http
+            .get(
+          Uri.parse(
+            '$baseUrl/Appointments/patient/$userId',
+          ),
+          headers: headers,
+        )
+            .timeout(normalTimeout);
+
+        if (UserSession.userId != userId) {
+          return <dynamic>[];
+        }
+
+        // دعم مؤقت في حال لم يُنشر مسار patient على السيرفر بعد.
+        if (response.statusCode == 404) {
+          final all = await getAllAppointments(
+            forceRefresh: forceRefresh,
+          );
+
+          if (UserSession.userId != userId) {
+            return <dynamic>[];
+          }
+
+          final id = userId.toString();
+
+          final fallback = all.where((appointment) {
+            if (appointment is! Map) return false;
+
+            return appointment['patientId']?.toString() == id ||
+                appointment['PatientId']?.toString() == id;
+          }).map<dynamic>((appointment) {
+            return appointment is Map
+                ? Map<String, dynamic>.from(appointment)
+                : appointment;
+          }).toList();
+
+          _userAppointmentsCache[userId] = fallback;
+          return List<dynamic>.from(fallback);
+        }
+
+        if (response.statusCode != 200) {
+          if (_userAppointmentsCache.containsKey(userId)) {
+            return List<dynamic>.from(
+              _userAppointmentsCache[userId]!,
+            );
+          }
+
+          throw Exception(
+            'Failed to load patient appointments: '
+                '${response.statusCode} ${response.body}',
+          );
+        }
+
+        final decoded = jsonDecode(response.body);
+
+        if (decoded is! List) {
+          throw Exception(
+            'Patient appointments response is not a list',
+          );
+        }
+
+        final appointments = decoded.map<dynamic>((appointment) {
+          if (appointment is! Map) return appointment;
+
+          final copy = Map<String, dynamic>.from(appointment);
+
+          final doctorImage = copy['doctorImage'] ??
+              copy['DoctorImage'] ??
+              copy['image'] ??
+              copy['Image'];
+
+          final fixedImage = fixImageUrl(
+            doctorImage?.toString() ?? '',
+          );
+
+          copy['doctorImage'] = fixedImage;
+          copy['DoctorImage'] = fixedImage;
+          copy['image'] = fixedImage;
+
+          return copy;
+        }).toList();
+
+        if (UserSession.userId != userId) {
+          return <dynamic>[];
+        }
+
+        _userAppointmentsCache[userId] =
+        List<dynamic>.from(appointments);
+
+        return List<dynamic>.from(appointments);
+      } finally {
+        _userAppointmentsRequests.remove(userId);
+      }
+    })();
+
+    _userAppointmentsRequests[userId] = request;
+    return request;
+  }
+
+  static void _rebuildUserAppointmentCaches(List<dynamic> appointments) {
+    final grouped = <int, List<dynamic>>{};
+
+    for (final appointment in appointments) {
+      if (appointment is! Map) continue;
+
+      final rawId = appointment['patientId'] ?? appointment['PatientId'];
+      final patientId =
+      rawId is int ? rawId : int.tryParse(rawId?.toString() ?? '');
+
+      if (patientId == null) continue;
+
+      grouped.putIfAbsent(patientId, () => <dynamic>[]).add(
+        Map<String, dynamic>.from(appointment),
+      );
+    }
+
+    _userAppointmentsCache
+      ..clear()
+      ..addAll(grouped);
+    _userAppointmentsRequests.clear();
   }
 
   static Future<void> updateAppointmentStatus({
@@ -911,6 +1363,13 @@ class ApiService {
     final doctorId = appointment['doctorId'] ?? appointment['DoctorId'];
     final appointmentDate =
         appointment['appointmentDate'] ?? appointment['AppointmentDate'];
+
+    if (appointmentId == null ||
+        patientId == null ||
+        doctorId == null ||
+        appointmentDate == null) {
+      throw Exception('Invalid appointment data');
+    }
 
     final response = await http
         .put(
@@ -930,12 +1389,14 @@ class ApiService {
       throw Exception('Failed to update appointment status');
     }
 
-    // Update local cache immediately instead of clearing it.
-    // This keeps Manage Appointments visible and fast on mobile.
-    if (_appointmentsCache != null) {
-      for (final item in _appointmentsCache!) {
+    // تحديث جميع نسخ الكاش محلياً فوراً بدون إعادة تحميل الصفحة.
+    void updateList(List<dynamic>? list) {
+      if (list == null) return;
+
+      for (final item in list) {
         if (item is Map<String, dynamic>) {
           final id = item['appointmentId'] ?? item['AppointmentId'];
+
           if (id.toString() == appointmentId.toString()) {
             item['status'] = status;
             item['Status'] = status;
@@ -945,18 +1406,65 @@ class ApiService {
       }
     }
 
-    _appointmentsRequest = null;
+    updateList(_allAppointmentsCache);
+
+    for (final list in _userAppointmentsCache.values) {
+      updateList(list);
+    }
+
+    _allAppointmentsRequest = null;
+    _userAppointmentsRequests.clear();
     clearNotificationsCache();
+    notifyAppointmentsChanged();
   }
 
-  static Future<int> getAppointmentCountByUser(int patientId) async {
-    final appointments = await getAllAppointments();
-    final id = patientId.toString();
+  static Future<int> getAppointmentCountByUser(
+      int patientId, {
+        bool forceRefresh = false,
+      }) async {
+    if (patientId <= 0) return 0;
 
-    return appointments.where((appointment) {
-      return appointment['patientId']?.toString() == id ||
-          appointment['PatientId']?.toString() == id;
-    }).length;
+    if (!forceRefresh &&
+        _userAppointmentsCache.containsKey(patientId)) {
+      return _userAppointmentsCache[patientId]!.length;
+    }
+
+    final currentUserId = UserSession.userId;
+
+    if (currentUserId == patientId) {
+      final appointments = await getAppointments(
+        forceRefresh: forceRefresh,
+      );
+
+      return appointments.length;
+    }
+
+    // يُستخدم فقط عندما يطلب الأدمن عداد مستخدم محدد.
+    final response = await http
+        .get(
+      Uri.parse(
+        '$baseUrl/Appointments/patient/$patientId',
+      ),
+      headers: headers,
+    )
+        .timeout(normalTimeout);
+
+    if (response.statusCode != 200) {
+      return _userAppointmentsCache[patientId]?.length ?? 0;
+    }
+
+    final decoded = jsonDecode(response.body);
+
+    if (decoded is! List) return 0;
+
+    final appointments = decoded.map<dynamic>((item) {
+      return item is Map
+          ? Map<String, dynamic>.from(item)
+          : item;
+    }).toList();
+
+    _userAppointmentsCache[patientId] = appointments;
+    return appointments.length;
   }
 
   static Future<void> deleteAppointment(int appointmentId) async {
@@ -971,8 +1479,9 @@ class ApiService {
       throw Exception('Failed to delete appointment');
     }
 
-    resetAppointmentsCache();
+    clearAppointmentsCache();
     clearNotificationsCache();
+    notifyAppointmentsChanged();
   }
 
   static Future<List<dynamic>> getMedicalRecords() async {
@@ -1103,7 +1612,7 @@ class ApiService {
         bool forceRefresh = false,
       }) async {
     if (!forceRefresh && _notificationsCache.containsKey(userId)) {
-      return _notificationsCache[userId]!;
+      return List<dynamic>.from(_notificationsCache[userId]!);
     }
 
     if (!forceRefresh && _notificationsRequests.containsKey(userId)) {
@@ -1122,7 +1631,7 @@ class ApiService {
         if (response.statusCode == 200) {
           final data = decodeList(response.body);
           _notificationsCache[userId] = data;
-          return data;
+          return List<dynamic>.from(data);
         }
 
         _notificationsCache[userId] = [];

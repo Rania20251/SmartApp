@@ -43,7 +43,7 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     doctorsFuture = ApiService.getDoctors(forceRefresh: true);
-    specialtiesFuture = ApiService.getSpecialties(forceRefresh: true);
+    specialtiesFuture = ApiService.getSpecialties();
     loadBanners();
   }
 
@@ -468,9 +468,23 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   String getDoctorImage(dynamic doctor) {
-    final image = doctor['image']?.toString().trim() ?? '';
-    if (image.isNotEmpty && image != 'string') return image;
-    return 'assets/images/profile.jpg';
+    if (doctor is! Map) {
+      return 'assets/images/profile.jpg';
+    }
+
+    final image = (
+        doctor['image'] ??
+            doctor['Image'] ??
+            doctor['doctorImage'] ??
+            doctor['DoctorImage'] ??
+            ''
+    ).toString().trim();
+
+    if (image.isEmpty || image == 'string') {
+      return 'assets/images/profile.jpg';
+    }
+
+    return ApiService.fixImageUrl(image);
   }
 
   int getDoctorSpecialtyId(dynamic doctor) {
@@ -503,46 +517,11 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   String translateSpecialty(String name) {
-    final value = name.toLowerCase().trim();
-
-    if (!AppStrings.isArabic) return name;
-
-    if (value.contains('cardiology') || value.contains('heart')) return 'القلب';
-    if (value.contains('dentistry') || value.contains('dental')) return 'الأسنان';
-    if (value.contains('neurology') || value.contains('neuro')) return 'الأعصاب';
-    if (value.contains('pediatrics') || value.contains('pedia') || value.contains('child')) return 'الأطفال';
-    if (value.contains('dermatology') || value.contains('derma')) return 'الجلدية';
-    if (value.contains('ophthalmology') || value.contains('eye')) return 'العيون';
-    if (value.contains('surgery')) return 'الجراحة';
-
-    return name;
+    return AppStrings.specialtyByLanguage(name);
   }
 
   String translateDoctorName(String name) {
-    if (!AppStrings.isArabic) return name;
-
-    final value = name.toLowerCase().trim();
-
-    if (value.contains('ahmad ali') || value.contains('ahmed ali')) {
-      return 'د. أحمد علي';
-    }
-
-    if (value.contains('sarah ahmad') || value.contains('sara ahmad')) {
-      return 'د. سارة أحمد';
-    }
-
-    return name
-        .replaceAll('Dr.', 'د.')
-        .replaceAll('dr.', 'د.')
-        .replaceAll('Ahmad', 'أحمد')
-        .replaceAll('Ahmed', 'أحمد')
-        .replaceAll('Ali', 'علي')
-        .replaceAll('Sara', 'سارة')
-        .replaceAll('Sarah', 'سارة')
-        .replaceAll('Mohammad', 'محمد')
-        .replaceAll('Mohammed', 'محمد')
-        .replaceAll('Omar', 'عمر')
-        .replaceAll('Nour', 'نور');
+    return AppStrings.doctorNameByLanguage(name);
   }
 
   IconData getIconData(String iconName) {
@@ -626,8 +605,12 @@ class _HomeScreenState extends State<HomeScreen> {
                   const SizedBox(height: 20),
                   TextField(
                     controller: searchController,
-                    textDirection:
-                    AppStrings.isArabic ? TextDirection.rtl : TextDirection.ltr,
+                    textDirection: AppStrings.isArabic
+                        ? TextDirection.rtl
+                        : TextDirection.ltr,
+                    textAlign: AppStrings.isArabic
+                        ? TextAlign.right
+                        : TextAlign.left,
                     onChanged: (value) {
                       setState(() {
                         searchText = value.trim();
@@ -684,7 +667,9 @@ class _HomeScreenState extends State<HomeScreen> {
                         height: 128,
                         width: double.infinity,
                         child: Directionality(
-                          textDirection: TextDirection.ltr,
+                          textDirection: AppStrings.isArabic
+                              ? TextDirection.rtl
+                              : TextDirection.ltr,
                           child: ScrollConfiguration(
                             behavior: const MaterialScrollBehavior().copyWith(
                               dragDevices: {
@@ -1036,22 +1021,22 @@ class _DoctorCardState extends State<DoctorCard> {
             ),
             const SizedBox(width: 12),
             Expanded(
-              child: Align(
-                alignment: AppStrings.isArabic
-                    ? Alignment.centerRight
-                    : Alignment.centerLeft,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: AppStrings.isArabic
-                      ? CrossAxisAlignment.start
-                      : CrossAxisAlignment.start,
-                  children: [
-                    Text(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: AppStrings.isArabic
+                    ? CrossAxisAlignment.end
+                    : CrossAxisAlignment.start,
+                children: [
+                  SizedBox(
+                    width: double.infinity,
+                    child: Text(
                       widget.name,
-                      textDirection:
-                      AppStrings.isArabic ? TextDirection.rtl : TextDirection.ltr,
-                      textAlign:
-                      AppStrings.isArabic ? TextAlign.right : TextAlign.left,
+                      textDirection: AppStrings.isArabic
+                          ? TextDirection.rtl
+                          : TextDirection.ltr,
+                      textAlign: AppStrings.isArabic
+                          ? TextAlign.right
+                          : TextAlign.left,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
@@ -1060,24 +1045,38 @@ class _DoctorCardState extends State<DoctorCard> {
                         fontWeight: FontWeight.bold,
                       ),
                     ),
-                    const SizedBox(height: 4),
-                    Text(
+                  ),
+                  const SizedBox(height: 4),
+                  SizedBox(
+                    width: double.infinity,
+                    child: Text(
                       widget.specialty,
-                      textDirection:
-                      AppStrings.isArabic ? TextDirection.rtl : TextDirection.ltr,
-                      textAlign:
-                      AppStrings.isArabic ? TextAlign.right : TextAlign.left,
+                      textDirection: AppStrings.isArabic
+                          ? TextDirection.rtl
+                          : TextDirection.ltr,
+                      textAlign: AppStrings.isArabic
+                          ? TextAlign.right
+                          : TextAlign.left,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(color: Colors.grey),
                     ),
-                    const SizedBox(height: 8),
-                    Directionality(
+                  ),
+                  const SizedBox(height: 8),
+                  Align(
+                    alignment: AppStrings.isArabic
+                        ? Alignment.centerRight
+                        : Alignment.centerLeft,
+                    child: Directionality(
                       textDirection: TextDirection.ltr,
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          const Icon(Icons.star, color: Colors.orange, size: 16),
+                          const Icon(
+                            Icons.star,
+                            color: Colors.orange,
+                            size: 16,
+                          ),
                           Text(' ${widget.rating}'),
                           const SizedBox(width: 12),
                           const Icon(
@@ -1089,8 +1088,8 @@ class _DoctorCardState extends State<DoctorCard> {
                         ],
                       ),
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
             ),
             const SizedBox(width: 10),
@@ -1107,19 +1106,30 @@ class _DoctorCardState extends State<DoctorCard> {
 
                   try {
                     await ApiService.bookAppointment(
-                      patientId: UserSession.userId ?? 1,
+                      patientId: UserSession.userId ?? 0,
                       doctorId: widget.doctorId,
                       appointmentDate: DateTime.now().add(
                         const Duration(days: 1),
                       ),
                     );
 
-                    ApiService.resetAppointmentsCache();
 
                     if (!mounted) return;
 
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(content: Text(AppStrings.appointmentBooked)),
+                    );
+                  } on AppointmentSlotTakenException {
+                    if (!mounted) return;
+
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(
+                          AppStrings.isArabic
+                              ? 'هذا الموعد غير متاح، اختاري وقتًا آخر.'
+                              : 'This appointment is unavailable. Please choose another time.',
+                        ),
+                      ),
                     );
                   } catch (_) {
                     if (!mounted) return;

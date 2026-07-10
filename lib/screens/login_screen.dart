@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+
 import '../language/app_strings.dart';
 import '../services/api_service.dart';
 import '../services/user_session.dart';
@@ -25,6 +26,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
   void showMessage(String message) {
     if (!mounted) return;
+
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(message)),
     );
@@ -46,6 +48,8 @@ class _LoginScreenState extends State<LoginScreen> {
 
     if (isLoading) return;
 
+    FocusScope.of(context).unfocus();
+
     setState(() {
       isLoading = true;
     });
@@ -58,23 +62,32 @@ class _LoginScreenState extends State<LoginScreen> {
 
       if (!mounted) return;
 
-      if (user != null) {
-        await UserSession.saveUser(user);
-        await UserSession.loadUser();
-
-        if (!mounted) return;
-
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(
-            builder: (_) => const MainScreen(),
-          ),
-        );
-      } else {
+      if (user == null) {
         showMessage(AppStrings.invalidLogin);
+        return;
       }
+
+      await UserSession.saveUser(user);
+      await UserSession.loadUser();
+
+      if (!mounted) return;
+
+      if (!UserSession.isLoggedIn) {
+        showMessage(AppStrings.connectionFailed);
+        return;
+      }
+
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(
+          builder: (_) => const MainScreen(),
+        ),
+            (route) => false,
+      );
     } catch (_) {
-      showMessage(AppStrings.connectionFailed);
+      if (mounted) {
+        showMessage(AppStrings.connectionFailed);
+      }
     } finally {
       if (mounted) {
         setState(() {
@@ -112,7 +125,10 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     return Directionality(
-      textDirection: AppStrings.isArabic ? TextDirection.rtl : TextDirection.ltr,
+      textDirection:
+      AppStrings.isArabic
+          ? TextDirection.rtl
+          : TextDirection.ltr,
       child: Scaffold(
         backgroundColor: background,
         body: Center(
@@ -149,13 +165,17 @@ class _LoginScreenState extends State<LoginScreen> {
                   const SizedBox(height: 8),
                   Text(
                     AppStrings.loginToAccount,
-                    style: const TextStyle(color: Colors.grey),
+                    style: const TextStyle(
+                      color: Colors.grey,
+                    ),
                   ),
                   const SizedBox(height: 26),
                   TextField(
                     controller: emailController,
                     keyboardType: TextInputType.emailAddress,
                     textInputAction: TextInputAction.next,
+                    textDirection: TextDirection.ltr,
+                    textAlign: TextAlign.left,
                     decoration: InputDecoration(
                       hintText: AppStrings.email,
                       prefixIcon: const Icon(Icons.email),
@@ -197,7 +217,8 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                   ),
                   Align(
-                    alignment: AppStrings.isArabic
+                    alignment:
+                    AppStrings.isArabic
                         ? Alignment.centerLeft
                         : Alignment.centerRight,
                     child: TextButton(
@@ -221,13 +242,16 @@ class _LoginScreenState extends State<LoginScreen> {
                       style: ElevatedButton.styleFrom(
                         backgroundColor: primary,
                         foregroundColor: Colors.white,
-                        disabledBackgroundColor: primary.withOpacity(.65),
+                        disabledBackgroundColor:
+                        primary.withOpacity(.65),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(16),
                         ),
                       ),
-                      onPressed: isLoading ? null : loginUser,
-                      child: isLoading
+                      onPressed:
+                      isLoading ? null : loginUser,
+                      child:
+                      isLoading
                           ? const SizedBox(
                         width: 24,
                         height: 24,
@@ -238,14 +262,18 @@ class _LoginScreenState extends State<LoginScreen> {
                       )
                           : Text(
                         AppStrings.login,
-                        style: const TextStyle(fontSize: 18),
+                        style: const TextStyle(
+                          fontSize: 18,
+                        ),
                       ),
                     ),
                   ),
                   const SizedBox(height: 16),
                   TextButton(
                     onPressed: goToRegister,
-                    child: Text(AppStrings.createNewAccount),
+                    child: Text(
+                      AppStrings.createNewAccount,
+                    ),
                   ),
                 ],
               ),

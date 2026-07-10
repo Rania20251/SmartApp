@@ -34,6 +34,8 @@ class _ManageDoctorsScreenState extends State<ManageDoctorsScreen> {
   }
 
   void refreshDoctors() {
+    ApiService.clearDoctorsCache();
+
     setState(() {
       loadDoctors();
     });
@@ -69,13 +71,23 @@ class _ManageDoctorsScreenState extends State<ManageDoctorsScreen> {
   }
 
   String getDoctorImagePath(dynamic doctor) {
-    final image = doctor['image']?.toString().trim() ?? '';
-
-    if (image.isNotEmpty && image != 'string') {
-      return ApiService.fixImageUrl(image);
+    if (doctor is! Map) {
+      return 'assets/images/profile.jpg';
     }
 
-    return 'assets/images/profile.jpg';
+    final image = (
+        doctor['image'] ??
+            doctor['Image'] ??
+            doctor['doctorImage'] ??
+            doctor['DoctorImage'] ??
+            ''
+    ).toString().trim();
+
+    if (image.isEmpty || image.toLowerCase() == 'string') {
+      return 'assets/images/profile.jpg';
+    }
+
+    return ApiService.fixImageUrl(image);
   }
 
   Widget doctorImage(String imagePath) {
@@ -217,53 +229,103 @@ class _ManageDoctorsScreenState extends State<ManageDoctorsScreen> {
     return name;
   }
 
-  Future<void> changeDoctorImage(Map<String, dynamic> doctor) async {
+  Future<void> changeDoctorImage(
+      Map<String, dynamic> doctor,
+      ) async {
     final XFile? picked = await picker.pickImage(
       source: ImageSource.gallery,
       imageQuality: 80,
+      maxWidth: 1200,
     );
 
     if (picked == null) return;
 
-    final doctorId =
-        int.tryParse(doctor['doctorId']?.toString() ?? '0') ?? 0;
+    final doctorId = int.tryParse(
+      (
+          doctor['doctorId'] ??
+              doctor['DoctorId'] ??
+              doctor['id'] ??
+              doctor['Id'] ??
+              '0'
+      ).toString(),
+    ) ??
+        0;
 
-    if (doctorId == 0) return;
+    if (doctorId <= 0) return;
 
     try {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Updating image...')),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              AppStrings.isArabic
+                  ? 'جاري تحديث الصورة...'
+                  : 'Updating image...',
+            ),
+          ),
+        );
+      }
 
       final bytes = await picked.readAsBytes();
-      final fileName = picked.name.isNotEmpty ? picked.name : 'doctor.jpg';
+      final fileName = picked.name.isNotEmpty
+          ? picked.name
+          : 'doctor.jpg';
 
-      final uploadedImageUrl = await ApiService.uploadDoctorImageBytes(
+      // 1) رفع الصورة وأخذ الرابط.
+      final uploadedImageUrl =
+      await ApiService.uploadDoctorImageBytes(
         bytes: bytes,
         fileName: fileName,
       );
 
+      // 2) حفظ الرابط مع بيانات الطبيب.
       await ApiService.updateDoctor(
         doctorId: doctorId,
-        fullName: doctor['fullName']?.toString() ?? '',
+        fullName: (
+            doctor['fullName'] ??
+                doctor['FullName'] ??
+                ''
+        ).toString(),
         specialtyId: getDoctorSpecialtyId(doctor),
-        phoneNumber: doctor['phoneNumber']?.toString() ?? '',
-        email: doctor['email']?.toString() ?? '',
-        image: uploadedImageUrl,
+        phoneNumber: (
+            doctor['phoneNumber'] ??
+                doctor['PhoneNumber'] ??
+                ''
+        ).toString(),
+        email: (
+            doctor['email'] ??
+                doctor['Email'] ??
+                ''
+        ).toString(),
+        image: uploadedImageUrl.trim(),
       );
 
-      refreshDoctors();
+      // تحديث العنصر الحالي مباشرة قبل إعادة التحميل.
+      doctor['image'] = uploadedImageUrl.trim();
+      doctor['Image'] = uploadedImageUrl.trim();
+
+      ApiService.clearDoctorsCache();
 
       if (!mounted) return;
 
+      setState(() {
+        loadDoctors();
+      });
+
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(AppStrings.doctorImageUpdated)),
+        SnackBar(
+          content: Text(AppStrings.doctorImageUpdated),
+        ),
       );
     } catch (e) {
       if (!mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('${AppStrings.doctorImageUpdateFailed}: $e')),
+        SnackBar(
+          content: Text(
+            '${AppStrings.doctorImageUpdateFailed}: $e',
+          ),
+        ),
       );
     }
   }

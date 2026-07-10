@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../language/app_strings.dart';
 import '../services/api_service.dart';
+import '../services/user_session.dart';
 import 'book_appointment_screen.dart';
 
 class ScheduleScreen extends StatefulWidget {
@@ -15,67 +16,119 @@ class ScheduleScreen extends StatefulWidget {
 }
 
 class _ScheduleScreenState extends State<ScheduleScreen> {
-  static List<dynamic> cachedAppointments = [];
-
-  List<dynamic> allAppointments = List<dynamic>.from(cachedAppointments);
+  List<dynamic> allAppointments = [];
 
   bool showUpcoming = true;
   bool isRefreshing = false;
-  bool firstLoadDone = cachedAppointments.isNotEmpty;
+  bool firstLoadDone = false;
   String? errorMessage;
+
+  int? _screenUserId;
+  int _requestVersion = 0;
 
   @override
   void initState() {
     super.initState();
 
-    allAppointments = List<dynamic>.from(cachedAppointments);
+    _screenUserId = UserSession.userId;
+    ApiService.appointmentsVersion.addListener(
+      _onAppointmentsChanged,
+    );
 
-    if (cachedAppointments.isEmpty) {
-      // أول فتح: لا نعرض "لا يوجد مواعيد" قبل ما يرجع السيرفر
-      loadAppointments(showSmallLoading: true);
-    } else {
-      // بعدها: اعرض الكاش فوراً وحدّث بالخلفية
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) {
-          refreshAppointments();
-        }
-      });
-    }
+    // تحميل واحد فقط عند فتح الشاشة.
+    loadAppointments(
+      showSmallLoading: true,
+      forceRefresh: true,
+    );
   }
 
-  Future<void> loadAppointments({bool showSmallLoading = false}) async {
+  void _onAppointmentsChanged() {
+    if (!mounted || isRefreshing) return;
+
+    // يحصل فقط بعد حجز/تعديل/حذف حقيقي.
+    // يستخدم الكاش إن كان محدثاً، ولا يعمل تحديثاً متكرراً.
+    loadAppointments(
+      showSmallLoading: false,
+      forceRefresh: false,
+    );
+  }
+
+  @override
+  void dispose() {
+    ApiService.appointmentsVersion.removeListener(
+      _onAppointmentsChanged,
+    );
+    _requestVersion++;
+    super.dispose();
+  }
+
+  Future<void> loadAppointments({
+    bool showSmallLoading = false,
+    bool forceRefresh = false,
+  }) async {
     if (isRefreshing) return;
 
-    if (mounted && showSmallLoading) {
+    final requestVersion = ++_requestVersion;
+    final requestUserId = UserSession.userId;
+
+    if (requestUserId == null || requestUserId <= 0) {
+      if (!mounted) return;
+
+      setState(() {
+        allAppointments = [];
+        firstLoadDone = true;
+        isRefreshing = false;
+        errorMessage = null;
+      });
+      return;
+    }
+
+    if (mounted) {
       setState(() {
         isRefreshing = true;
-        firstLoadDone = false;
         errorMessage = null;
+
+        if (_screenUserId != requestUserId) {
+          _screenUserId = requestUserId;
+          allAppointments = [];
+          firstLoadDone = false;
+        } else if (showSmallLoading && allAppointments.isEmpty) {
+          firstLoadDone = false;
+        }
       });
     }
 
     try {
-      final data = await ApiService.getAppointments(forceRefresh: true)
-          .timeout(const Duration(seconds: 20));
+      final data = await ApiService.getAppointments(
+        forceRefresh: forceRefresh,
+      ).timeout(const Duration(seconds: 20));
 
-      if (!mounted) return;
+      if (!mounted ||
+          requestVersion != _requestVersion ||
+          requestUserId != UserSession.userId) {
+        return;
+      }
 
-      cachedAppointments = List<dynamic>.from(data);
+      final loadedAppointments = List<dynamic>.from(data);
 
       setState(() {
-        allAppointments = List<dynamic>.from(cachedAppointments);
+        allAppointments = loadedAppointments;
         firstLoadDone = true;
         isRefreshing = false;
         errorMessage = null;
       });
     } catch (_) {
-      if (!mounted) return;
+      if (!mounted ||
+          requestVersion != _requestVersion ||
+          requestUserId != UserSession.userId) {
+        return;
+      }
 
       setState(() {
-        allAppointments = List<dynamic>.from(cachedAppointments);
+        // لا نمسح الحجوزات الموجودة إذا فشل السيرفر.
         firstLoadDone = true;
         isRefreshing = false;
-        errorMessage = cachedAppointments.isEmpty
+        errorMessage = allAppointments.isEmpty
             ? AppStrings.failedLoadAppointments
             : null;
       });
@@ -83,42 +136,10 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
   }
 
   Future<void> refreshAppointments() async {
-    if (isRefreshing) return;
-
-    if (mounted) {
-      setState(() {
-        isRefreshing = true;
-        errorMessage = null;
-      });
-    }
-
-    try {
-      final data = await ApiService.getAppointments(forceRefresh: true)
-          .timeout(const Duration(seconds: 20));
-
-      if (!mounted) return;
-
-      cachedAppointments = List<dynamic>.from(data);
-
-      setState(() {
-        allAppointments = List<dynamic>.from(cachedAppointments);
-        firstLoadDone = true;
-        isRefreshing = false;
-        errorMessage = null;
-      });
-    } catch (_) {
-      if (!mounted) return;
-
-      setState(() {
-        // لا نمسح القائمة إذا السيرفر بطّيء أو فشل
-        allAppointments = List<dynamic>.from(cachedAppointments);
-        firstLoadDone = true;
-        isRefreshing = false;
-        errorMessage = cachedAppointments.isEmpty
-            ? AppStrings.failedLoadAppointments
-            : null;
-      });
-    }
+    await loadAppointments(
+      showSmallLoading: false,
+      forceRefresh: true,
+    );
   }
 
   DateTime parseDate(dynamic value) {
@@ -193,7 +214,10 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
       appointment,
       ['status', 'Status'],
       '',
-    ).trim().toLowerCase();
+    )
+        .trim()
+        .toLowerCase()
+        .replaceAll(RegExp(r'\s+'), ' ');
   }
 
   bool isConfirmedStatus(String status) {
@@ -203,12 +227,29 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
         status == 'تم التأكيد';
   }
 
-  bool isPendingStatus(String status) {
-    return status == 'pending' ||
-        status == 'upcoming' ||
-        status == 'قادم' ||
-        status == 'قيد الانتظار' ||
-        status.isEmpty;
+  bool isCompletedStatus(String status) {
+    return status == 'completed' ||
+        status == 'complete' ||
+        status == 'done' ||
+        status == 'مكتمل' ||
+        status == 'تم الاكتمال' ||
+        status == 'تم الإكمال';
+  }
+
+  bool isCancelledStatus(String status) {
+    return status == 'cancelled' ||
+        status == 'canceled' ||
+        status == 'cancel' ||
+        status == 'ملغي' ||
+        status == 'ملغى' ||
+        status == 'تم الإلغاء';
+  }
+
+  bool isPastStatus(String status) {
+    // Confirmed يجب أن يظهر دائماً داخل Past.
+    return isConfirmedStatus(status) ||
+        isCompletedStatus(status) ||
+        isCancelledStatus(status);
   }
 
   List<dynamic> filteredAppointments(List<dynamic> appointments) {
@@ -216,12 +257,12 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
       final status = normalizedStatus(appointment);
 
       if (showUpcoming) {
-        // Upcoming يظهر فيه غير المؤكد فقط
-        return isPendingStatus(status) && !isConfirmedStatus(status);
+        // Pending وأي حالة جديدة غير منتهية تظهر في القادمة.
+        return !isPastStatus(status);
       }
 
-      // Past يظهر فيه المؤكد فقط
-      return isConfirmedStatus(status);
+      // Confirmed وCompleted وCancelled تظهر في السابقة.
+      return isPastStatus(status);
     }).toList();
 
     filtered.sort((a, b) {
@@ -233,7 +274,6 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
         valueOf(b, ['appointmentDate', 'AppointmentDate'], ''),
       );
 
-      // الأحدث أولاً
       return dateB.compareTo(dateA);
     });
 
@@ -267,64 +307,23 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
     );
   }
 
-  Widget smallUpdatingChip() {
-    return Positioned(
-      top: 8,
-      right: 0,
-      left: 0,
-      child: Center(
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(18),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(.05),
-                blurRadius: 8,
-              ),
-            ],
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const SizedBox(
-                width: 14,
-                height: 14,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              ),
-              const SizedBox(width: 6),
-              Text(
-                AppStrings.isArabic ? 'تحديث...' : 'Updating...',
-                style: const TextStyle(fontSize: 11),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
 
   void removeAppointmentLocal(int appointmentId) {
-    cachedAppointments = cachedAppointments.where((appointment) {
-      final id = int.tryParse(
-        valueOf(
-          appointment,
-          ['appointmentId', 'AppointmentId'],
-          '0',
-        ),
-      ) ??
-          0;
-
-      return id != appointmentId;
-    }).toList();
-
     setState(() {
-      allAppointments = List<dynamic>.from(cachedAppointments);
+      allAppointments = allAppointments.where((appointment) {
+        final id = int.tryParse(
+          valueOf(
+            appointment,
+            ['appointmentId', 'AppointmentId'],
+            '0',
+          ),
+        ) ??
+            0;
+        return id != appointmentId;
+      }).toList();
     });
 
-    ApiService.resetAppointmentsCache();
+    ApiService.resetAppointmentsCache(UserSession.userId);
   }
 
   @override
@@ -440,7 +439,6 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
                     }),
                 ],
               ),
-            if (isRefreshing && firstLoadDone) smallUpdatingChip(),
           ],
         ),
         floatingActionButton: FloatingActionButton(
@@ -455,8 +453,12 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
             );
 
             if (booked == true) {
-              ApiService.resetAppointmentsCache();
-              await refreshAppointments();
+              if (!mounted) return;
+
+              await loadAppointments(
+                showSmallLoading: false,
+                forceRefresh: true,
+              );
             }
           },
           child: const Icon(Icons.add),
@@ -592,108 +594,11 @@ class AppointmentCard extends StatelessWidget {
   }
 
   String doctorNameByLanguage(String name) {
-    final value = name.toLowerCase();
-
-    if (AppStrings.isArabic) {
-      if (value.contains('ahmad ali') || value.contains('ahmed ali')) {
-        return 'د. أحمد علي';
-      }
-
-      if (value.contains('sarah ahmad') || value.contains('sara ahmad')) {
-        return 'د. سارة أحمد';
-      }
-
-      return name
-          .replaceAll('Dr.', 'د.')
-          .replaceAll('dr.', 'د.')
-          .replaceAll('Ahmad', 'أحمد')
-          .replaceAll('Ahmed', 'أحمد')
-          .replaceAll('Ali', 'علي')
-          .replaceAll('Sara', 'سارة')
-          .replaceAll('Sarah', 'سارة')
-          .replaceAll('Mohammad', 'محمد')
-          .replaceAll('Mohammed', 'محمد')
-          .replaceAll('Omar', 'عمر')
-          .replaceAll('Nour', 'نور');
-    }
-
-    return name;
+    return AppStrings.doctorNameByLanguage(name);
   }
 
   String specialtyByLanguage(String specialty) {
-    final value = specialty.toLowerCase();
-
-    if (AppStrings.isArabic) {
-      if (value.contains('card') ||
-          value.contains('heart') ||
-          value.contains('قلب')) {
-        return 'القلب';
-      }
-      if (value.contains('dent') ||
-          value.contains('dental') ||
-          value.contains('أسنان') ||
-          value.contains('اسنان')) {
-        return 'الأسنان';
-      }
-      if (value.contains('neuro') ||
-          value.contains('أعصاب') ||
-          value.contains('اعصاب')) {
-        return 'الأعصاب';
-      }
-      if (value.contains('pedia') ||
-          value.contains('child') ||
-          value.contains('أطفال') ||
-          value.contains('اطفال')) {
-        return 'الأطفال';
-      }
-      if (value.contains('derma') || value.contains('جلدية')) {
-        return 'الجلدية';
-      }
-      if (value.contains('eye') ||
-          value.contains('oph') ||
-          value.contains('عيون')) {
-        return 'العيون';
-      }
-      if (value.contains('surgery') || value.contains('جراحة')) {
-        return 'الجراحة';
-      }
-    } else {
-      if (value.contains('card') ||
-          value.contains('heart') ||
-          value.contains('قلب')) {
-        return 'Cardiology';
-      }
-      if (value.contains('dent') ||
-          value.contains('dental') ||
-          value.contains('أسنان') ||
-          value.contains('اسنان')) {
-        return 'Dentistry';
-      }
-      if (value.contains('neuro') ||
-          value.contains('أعصاب') ||
-          value.contains('اعصاب')) {
-        return 'Neurology';
-      }
-      if (value.contains('pedia') ||
-          value.contains('child') ||
-          value.contains('أطفال') ||
-          value.contains('اطفال')) {
-        return 'Pediatrics';
-      }
-      if (value.contains('derma') || value.contains('جلدية')) {
-        return 'Dermatology';
-      }
-      if (value.contains('eye') ||
-          value.contains('oph') ||
-          value.contains('عيون')) {
-        return 'Ophthalmology';
-      }
-      if (value.contains('surgery') || value.contains('جراحة')) {
-        return 'Surgery';
-      }
-    }
-
-    return specialty;
+    return AppStrings.specialtyByLanguage(specialty);
   }
 
   String statusText(String status) {
@@ -772,79 +677,96 @@ class AppointmentCard extends StatelessWidget {
           Expanded(
             child: Column(
               crossAxisAlignment: AppStrings.isArabic
-                  ? CrossAxisAlignment.start
+                  ? CrossAxisAlignment.end
                   : CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text(
-                  shownDoctorName,
-                  textDirection:
-                  AppStrings.isArabic ? TextDirection.rtl : TextDirection.ltr,
-                  textAlign: AppStrings.isArabic ? TextAlign.right : TextAlign.left,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 16,
-                    height: 1.15,
-                    fontWeight: FontWeight.bold,
+                SizedBox(
+                  width: double.infinity,
+                  child: Text(
+                    shownDoctorName,
+                    textDirection: AppStrings.isArabic
+                        ? TextDirection.rtl
+                        : TextDirection.ltr,
+                    textAlign: AppStrings.isArabic
+                        ? TextAlign.right
+                        : TextAlign.left,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 16,
+                      height: 1.15,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                 ),
                 const SizedBox(height: 4),
-                Text(
-                  shownSpecialty,
-                  textDirection:
-                  AppStrings.isArabic ? TextDirection.rtl : TextDirection.ltr,
-                  textAlign: AppStrings.isArabic ? TextAlign.right : TextAlign.left,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: Colors.grey,
-                    fontSize: 13,
+                SizedBox(
+                  width: double.infinity,
+                  child: Text(
+                    shownSpecialty,
+                    textDirection: AppStrings.isArabic
+                        ? TextDirection.rtl
+                        : TextDirection.ltr,
+                    textAlign: AppStrings.isArabic
+                        ? TextAlign.right
+                        : TextAlign.left,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Colors.grey,
+                      fontSize: 13,
+                    ),
                   ),
                 ),
                 const SizedBox(height: 8),
-                Directionality(
-                  textDirection: AppStrings.isArabic
-                      ? TextDirection.rtl
-                      : TextDirection.ltr,
-                  child: Wrap(
-                    spacing: 10,
-                    runSpacing: 6,
-                    crossAxisAlignment: WrapCrossAlignment.center,
-                    children: [
-                      Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Icon(
-                            Icons.calendar_month,
-                            size: 15,
-                            color: Colors.grey,
-                          ),
-                          const SizedBox(width: 5),
-                          Text(
-                            date,
-                            textDirection: TextDirection.ltr,
-                            style: const TextStyle(fontSize: 12),
-                          ),
-                        ],
-                      ),
-                      Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Icon(
-                            Icons.access_time,
-                            size: 15,
-                            color: Colors.grey,
-                          ),
-                          const SizedBox(width: 5),
-                          Text(
-                            time,
-                            textDirection: TextDirection.ltr,
-                            style: const TextStyle(fontSize: 12),
-                          ),
-                        ],
-                      ),
-                    ],
+                Align(
+                  alignment: AppStrings.isArabic
+                      ? Alignment.centerRight
+                      : Alignment.centerLeft,
+                  child: Directionality(
+                    textDirection: AppStrings.isArabic
+                        ? TextDirection.rtl
+                        : TextDirection.ltr,
+                    child: Wrap(
+                      spacing: 10,
+                      runSpacing: 6,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(
+                              Icons.calendar_month,
+                              size: 15,
+                              color: Colors.grey,
+                            ),
+                            const SizedBox(width: 5),
+                            Text(
+                              date,
+                              textDirection: TextDirection.ltr,
+                              style: const TextStyle(fontSize: 12),
+                            ),
+                          ],
+                        ),
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(
+                              Icons.access_time,
+                              size: 15,
+                              color: Colors.grey,
+                            ),
+                            const SizedBox(width: 5),
+                            Text(
+                              time,
+                              textDirection: TextDirection.ltr,
+                              style: const TextStyle(fontSize: 12),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ],
@@ -872,7 +794,7 @@ class AppointmentCard extends StatelessWidget {
 
                       try {
                         await ApiService.deleteAppointment(appointmentId);
-                        ApiService.resetAppointmentsCache();
+                        ApiService.resetAppointmentsCache(UserSession.userId);
                       } catch (_) {
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(

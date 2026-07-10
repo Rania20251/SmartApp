@@ -41,39 +41,42 @@ class _AddDoctorScreenState extends State<AddDoctorScreen> {
   }
 
   Future<void> loadSpecialties() async {
+    if (!mounted) return;
+
     setState(() {
       isLoadingSpecialties = true;
     });
 
     try {
-      final data = await ApiService.getSpecialties(forceRefresh: true);
+      final data = await ApiService.getSpecialties();
 
       final validSpecialties = data.where((specialty) {
         final id = getSpecialtyId(specialty);
         final name = getSpecialtyName(specialty);
-        return id != null && id > 0 && name.trim().isNotEmpty;
+
+        return id != null &&
+            id > 0 &&
+            name.trim().isNotEmpty;
       }).toList();
 
       if (!mounted) return;
 
-      setState(() {
-        specialties = validSpecialties;
-        isLoadingSpecialties = false;
+      int? resolvedSpecialtyId = selectedSpecialtyId;
 
-        if (selectedSpecialtyId == null && specialties.isNotEmpty) {
-          selectedSpecialtyId = getSpecialtyId(specialties.first);
-        }
-
-        if (selectedSpecialtyId != null) {
-          final exists = specialties.any(
-                (s) => getSpecialtyId(s) == selectedSpecialtyId,
+      final exists = resolvedSpecialtyId != null &&
+          validSpecialties.any(
+                (item) => getSpecialtyId(item) == resolvedSpecialtyId,
           );
 
-          if (!exists) {
-            selectedSpecialtyId =
-            specialties.isNotEmpty ? getSpecialtyId(specialties.first) : null;
-          }
-        }
+      if (!exists && validSpecialties.isNotEmpty) {
+        resolvedSpecialtyId =
+            getSpecialtyId(validSpecialties.first);
+      }
+
+      setState(() {
+        specialties = validSpecialties;
+        selectedSpecialtyId = resolvedSpecialtyId;
+        isLoadingSpecialties = false;
       });
     } catch (_) {
       if (!mounted) return;
@@ -95,6 +98,8 @@ class _AddDoctorScreenState extends State<AddDoctorScreen> {
   }
 
   Future<void> pickDoctorImage() async {
+    if (isLoading) return;
+
     final picked = await picker.pickImage(
       source: ImageSource.gallery,
       imageQuality: 80,
@@ -109,7 +114,8 @@ class _AddDoctorScreenState extends State<AddDoctorScreen> {
 
     setState(() {
       selectedImageBytes = bytes;
-      selectedImageName = picked.name.isNotEmpty ? picked.name : 'doctor.jpg';
+      selectedImageName =
+      picked.name.isNotEmpty ? picked.name : 'doctor.jpg';
     });
   }
 
@@ -118,13 +124,25 @@ class _AddDoctorScreenState extends State<AddDoctorScreen> {
 
     if (bytes == null) return '';
 
-    return ApiService.uploadDoctorImageBytes(
+    final uploadedUrl = await ApiService.uploadDoctorImageBytes(
       bytes: bytes,
-      fileName: selectedImageName.isEmpty ? 'doctor.jpg' : selectedImageName,
+      fileName: selectedImageName.isEmpty
+          ? 'doctor.jpg'
+          : selectedImageName,
     );
+
+    final fixedUrl = ApiService.fixImageUrl(uploadedUrl).trim();
+
+    if (fixedUrl.isEmpty || fixedUrl == 'string') {
+      throw Exception('Doctor image URL was not returned by the server');
+    }
+
+    return fixedUrl;
   }
 
   Future<void> addDoctor() async {
+    if (isLoading) return;
+
     final name = nameController.text.trim();
     final phone = phoneController.text.trim();
     final email = emailController.text.trim();
@@ -134,20 +152,25 @@ class _AddDoctorScreenState extends State<AddDoctorScreen> {
       return;
     }
 
-    if (selectedSpecialtyId == null || selectedSpecialtyId! <= 0) {
+    if (selectedSpecialtyId == null ||
+        selectedSpecialtyId! <= 0) {
       showMessage(AppStrings.enterSpecialty);
-      await loadSpecialties();
       return;
     }
-
-    if (isLoading) return;
 
     setState(() {
       isLoading = true;
     });
 
     try {
-      final uploadedImageUrl = await uploadSelectedImageIfNeeded();
+      final uploadedImageUrl =
+      await uploadSelectedImageIfNeeded();
+
+      if (mounted) {
+        setState(() {
+          imageUrl = uploadedImageUrl;
+        });
+      }
 
       await ApiService.createDoctor(
         fullName: name,
@@ -157,6 +180,7 @@ class _AddDoctorScreenState extends State<AddDoctorScreen> {
         image: uploadedImageUrl,
       );
 
+      // حتى تظهر صورة الطبيب الجديدة عند الرجوع مباشرة.
       ApiService.clearDoctorsCache();
 
       if (!mounted) return;
@@ -164,7 +188,9 @@ class _AddDoctorScreenState extends State<AddDoctorScreen> {
       showMessage(AppStrings.doctorAdded);
       Navigator.pop(context, true);
     } catch (e) {
-      showMessage('${AppStrings.addDoctorFailed}: $e');
+      showMessage(
+        '${AppStrings.addDoctorFailed}: $e',
+      );
     } finally {
       if (mounted) {
         setState(() {
@@ -237,7 +263,8 @@ class _AddDoctorScreenState extends State<AddDoctorScreen> {
 
     if (bytes != null) return MemoryImage(bytes);
 
-    if (imageUrl.startsWith('http://') || imageUrl.startsWith('https://')) {
+    if (imageUrl.startsWith('http://') ||
+        imageUrl.startsWith('https://')) {
       return NetworkImage(imageUrl);
     }
 
@@ -252,19 +279,26 @@ class _AddDoctorScreenState extends State<AddDoctorScreen> {
     final items = <DropdownMenuItem<int>>[];
 
     for (final specialty in specialties) {
-      final value = getSpecialtyId(specialty);
-
-      if (value == null || value <= 0) continue;
-
-      final name = getSpecialtyName(specialty);
+      final id = getSpecialtyId(specialty);
+      final originalName = getSpecialtyName(specialty);
       final icon = getSpecialtyIcon(specialty);
 
-      if (name.trim().isEmpty) continue;
+      if (id == null ||
+          id <= 0 ||
+          originalName.trim().isEmpty) {
+        continue;
+      }
+
+      final shownName =
+      AppStrings.specialtyByLanguage(originalName);
 
       items.add(
         DropdownMenuItem<int>(
-          value: value,
+          value: id,
           child: Row(
+            textDirection: AppStrings.isArabic
+                ? TextDirection.rtl
+                : TextDirection.ltr,
             children: [
               Icon(
                 getIconData(icon),
@@ -274,7 +308,10 @@ class _AddDoctorScreenState extends State<AddDoctorScreen> {
               const SizedBox(width: 10),
               Expanded(
                 child: Text(
-                  name,
+                  shownName,
+                  textAlign: AppStrings.isArabic
+                      ? TextAlign.right
+                      : TextAlign.left,
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
@@ -300,150 +337,184 @@ class _AddDoctorScreenState extends State<AddDoctorScreen> {
     final image = previewImage;
     final items = specialtyItems();
 
-    return Scaffold(
-      backgroundColor: background,
-      appBar: AppBar(
-        title: Text(AppStrings.addDoctor),
-        backgroundColor: Colors.white,
-        foregroundColor: Colors.black,
-        elevation: 0,
-      ),
-      body: Center(
-        child: Container(
-          width: 390,
-          padding: const EdgeInsets.all(20),
-          child: ListView(
-            children: [
-              const SizedBox(height: 20),
-              Center(
-                child: CircleAvatar(
-                  radius: 52,
-                  backgroundColor: lightPurple,
-                  backgroundImage: image,
-                  child: image == null
-                      ? const Icon(
-                    Icons.local_hospital,
-                    size: 55,
-                    color: primary,
-                  )
-                      : null,
-                ),
-              ),
-              const SizedBox(height: 12),
-              OutlinedButton.icon(
-                onPressed: isLoading ? null : pickDoctorImage,
-                icon: const Icon(Icons.image),
-                label: Text(AppStrings.changeImage),
-              ),
-              const SizedBox(height: 20),
-              TextField(
-                controller: nameController,
-                textInputAction: TextInputAction.next,
-                decoration: inputDecoration(
-                  hint: AppStrings.doctorFullName,
-                  icon: Icons.person,
-                ),
-              ),
-              const SizedBox(height: 16),
-              isLoadingSpecialties
-                  ? Container(
-                height: 56,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: const CircularProgressIndicator(),
-              )
-                  : DropdownButtonFormField<int>(
-                value: selectedSpecialtyId,
-                isExpanded: true,
-                decoration: inputDecoration(
-                  hint: AppStrings.specialty.isNotEmpty
-                      ? AppStrings.specialty
-                      : 'Select Specialty',
-                  icon: Icons.medical_services,
-                ),
-                items: items,
-                onChanged: isLoading || items.isEmpty
-                    ? null
-                    : (value) {
-                  if (selectedSpecialtyId == value) return;
+    final validSelectedValue = items.any(
+          (item) => item.value == selectedSpecialtyId,
+    )
+        ? selectedSpecialtyId
+        : null;
 
-                  setState(() {
-                    selectedSpecialtyId = value;
-                  });
-                },
-              ),
-              if (!isLoadingSpecialties && items.isEmpty) ...[
-                const SizedBox(height: 8),
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        AppStrings.enterSpecialty,
-                        style: const TextStyle(
-                          color: Colors.red,
-                          fontSize: 12,
-                        ),
-                      ),
-                    ),
-                    TextButton(
-                      onPressed: loadSpecialties,
-                      child: Text(AppStrings.isArabic ? 'إعادة تحميل' : 'Reload'),
-                    ),
-                  ],
+    return Directionality(
+      textDirection:
+      AppStrings.isArabic ? TextDirection.rtl : TextDirection.ltr,
+      child: Scaffold(
+        backgroundColor: background,
+        appBar: AppBar(
+          title: Text(AppStrings.addDoctor),
+          backgroundColor: Colors.white,
+          foregroundColor: Colors.black,
+          elevation: 0,
+        ),
+        body: Center(
+          child: Container(
+            width: 390,
+            padding: const EdgeInsets.all(20),
+            child: ListView(
+              children: [
+                const SizedBox(height: 20),
+                Center(
+                  child: CircleAvatar(
+                    radius: 52,
+                    backgroundColor: lightPurple,
+                    backgroundImage: image,
+                    child: image == null
+                        ? const Icon(
+                      Icons.local_hospital,
+                      size: 55,
+                      color: primary,
+                    )
+                        : null,
+                  ),
                 ),
-              ],
-              const SizedBox(height: 16),
-              TextField(
-                controller: phoneController,
-                keyboardType: TextInputType.phone,
-                textInputAction: TextInputAction.next,
-                decoration: inputDecoration(
-                  hint: AppStrings.phoneNumber,
-                  icon: Icons.phone,
+                const SizedBox(height: 12),
+                OutlinedButton.icon(
+                  onPressed:
+                  isLoading ? null : pickDoctorImage,
+                  icon: const Icon(Icons.image),
+                  label: Text(AppStrings.changeImage),
                 ),
-              ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: emailController,
-                keyboardType: TextInputType.emailAddress,
-                textInputAction: TextInputAction.done,
-                decoration: inputDecoration(
-                  hint: AppStrings.email,
-                  icon: Icons.email,
+                const SizedBox(height: 20),
+                TextField(
+                  controller: nameController,
+                  textDirection: AppStrings.isArabic
+                      ? TextDirection.rtl
+                      : TextDirection.ltr,
+                  textInputAction: TextInputAction.next,
+                  textAlign: AppStrings.isArabic
+                      ? TextAlign.right
+                      : TextAlign.left,
+                  decoration: inputDecoration(
+                    hint: AppStrings.doctorFullName,
+                    icon: Icons.person,
+                  ),
                 ),
-              ),
-              const SizedBox(height: 26),
-              SizedBox(
-                height: 52,
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: primary,
-                    foregroundColor: Colors.white,
-                    disabledBackgroundColor: primary.withOpacity(.65),
-                    shape: RoundedRectangleBorder(
+                const SizedBox(height: 16),
+                if (isLoadingSpecialties)
+                  Container(
+                    height: 56,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: Colors.white,
                       borderRadius: BorderRadius.circular(16),
                     ),
-                  ),
-                  onPressed: isLoading ? null : addDoctor,
-                  child: isLoading
-                      ? const SizedBox(
-                    width: 24,
-                    height: 24,
-                    child: CircularProgressIndicator(
-                      color: Colors.white,
-                      strokeWidth: 3,
-                    ),
+                    child: const CircularProgressIndicator(),
                   )
-                      : Text(
-                    AppStrings.addDoctor,
-                    style: const TextStyle(fontSize: 18),
+                else
+                  DropdownButtonFormField<int>(
+                    value: validSelectedValue,
+                    isExpanded: true,
+                    decoration: inputDecoration(
+                      hint: AppStrings.specialty,
+                      icon: Icons.medical_services,
+                    ),
+                    items: items,
+                    onChanged:
+                    isLoading || items.isEmpty
+                        ? null
+                        : (value) {
+                      setState(() {
+                        selectedSpecialtyId = value;
+                      });
+                    },
+                  ),
+                if (!isLoadingSpecialties && items.isEmpty) ...[
+                  const SizedBox(height: 8),
+                  Row(
+                    textDirection: AppStrings.isArabic
+                        ? TextDirection.rtl
+                        : TextDirection.ltr,
+                    children: [
+                      Expanded(
+                        child: Text(
+                          AppStrings.enterSpecialty,
+                          textAlign: AppStrings.isArabic
+                              ? TextAlign.right
+                              : TextAlign.left,
+                          style: const TextStyle(
+                            color: Colors.red,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ),
+                      TextButton(
+                        onPressed: loadSpecialties,
+                        child: Text(
+                          AppStrings.isArabic
+                              ? 'إعادة تحميل'
+                              : 'Reload',
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+                const SizedBox(height: 16),
+                TextField(
+                  controller: phoneController,
+                  textDirection: AppStrings.isArabic
+                      ? TextDirection.rtl
+                      : TextDirection.ltr,
+                  keyboardType: TextInputType.phone,
+                  textInputAction: TextInputAction.next,
+                  textAlign: AppStrings.isArabic
+                      ? TextAlign.right
+                      : TextAlign.left,
+                  decoration: inputDecoration(
+                    hint: AppStrings.phoneNumber,
+                    icon: Icons.phone,
                   ),
                 ),
-              ),
-            ],
+                const SizedBox(height: 16),
+                TextField(
+                  controller: emailController,
+                  keyboardType: TextInputType.emailAddress,
+                  textInputAction: TextInputAction.done,
+                  textDirection: TextDirection.ltr,
+                  textAlign: TextAlign.left,
+                  decoration: inputDecoration(
+                    hint: AppStrings.email,
+                    icon: Icons.email,
+                  ),
+                ),
+                const SizedBox(height: 26),
+                SizedBox(
+                  height: 52,
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: primary,
+                      foregroundColor: Colors.white,
+                      disabledBackgroundColor:
+                      primary.withOpacity(.65),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                    ),
+                    onPressed: isLoading ? null : addDoctor,
+                    child: isLoading
+                        ? const SizedBox(
+                      width: 24,
+                      height: 24,
+                      child: CircularProgressIndicator(
+                        color: Colors.white,
+                        strokeWidth: 3,
+                      ),
+                    )
+                        : Text(
+                      AppStrings.addDoctor,
+                      style: const TextStyle(fontSize: 18),
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -459,6 +530,10 @@ class _AddDoctorScreenState extends State<AddDoctorScreen> {
       prefixIcon: Icon(icon),
       filled: true,
       fillColor: Colors.white,
+      contentPadding: const EdgeInsets.symmetric(
+        horizontal: 16,
+        vertical: 16,
+      ),
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(16),
         borderSide: BorderSide.none,

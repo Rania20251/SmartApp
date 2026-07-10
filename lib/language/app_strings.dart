@@ -217,4 +217,248 @@ class AppStrings {
   static String get noSpecialtiesFound => isArabic ? 'لا توجد تخصصات' : 'No specialties found';
   static String get operationFailed => isArabic ? 'فشلت العملية' : 'Operation failed';
 
+
+  static String _normalizeNameSpaces(String value) {
+    return value
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+  }
+
+  static String _removeDoctorTitle(String value) {
+    return _normalizeNameSpaces(
+      value
+          .replaceAll(
+        RegExp(r'\bdoctor\b', caseSensitive: false),
+        ' ',
+      )
+          .replaceAll(
+        RegExp(r'\bdr\.?', caseSensitive: false),
+        ' ',
+      )
+          .replaceAll('دكتور', ' ')
+          .replaceAll('د.', ' '),
+    );
+  }
+
+  static String personNameByLanguage(String name) {
+    final clean = _removeDoctorTitle(name);
+
+    if (clean.isEmpty) {
+      return isArabic ? 'بدون اسم' : 'No Name';
+    }
+
+    if (isArabic) {
+      const knownNames = <String, String>{
+        'ahmad': 'أحمد',
+        'ahmed': 'أحمد',
+        'mohammad': 'محمد',
+        'mohammed': 'محمد',
+        'mohamed': 'محمد',
+        'mahmoud': 'محمود',
+        'ali': 'علي',
+        'sarah': 'سارة',
+        'sara': 'سارة',
+        'sali': 'سالي',
+        'sally': 'سالي',
+        'rana': 'رنا',
+        'rania': 'رانيا',
+        'ramia': 'راميا',
+        'salah': 'صلاح',
+        'omar': 'عمر',
+        'nour': 'نور',
+        'noor': 'نور',
+        'adnan': 'عدنان',
+        'yousef': 'يوسف',
+        'yusuf': 'يوسف',
+        'khaled': 'خالد',
+        'khalid': 'خالد',
+        'hassan': 'حسن',
+        'hasan': 'حسن',
+        'hussein': 'حسين',
+        'reem': 'ريم',
+        'lama': 'لمى',
+        'lina': 'لينا',
+        'dana': 'دانا',
+        'sami': 'سامي',
+        'sameer': 'سمير',
+        'samir': 'سمير',
+        'maha': 'مها',
+        'aya': 'آية',
+        'amal': 'أمل',
+        'huda': 'هدى',
+      };
+
+      final words = clean
+          .split(RegExp(r'\s+'))
+          .where((word) => word.trim().isNotEmpty)
+          .map((word) {
+        final punctuationFree = word
+            .replaceAll('.', '')
+            .replaceAll(',', '')
+            .trim();
+
+        if (!RegExp(r'[a-zA-Z]').hasMatch(punctuationFree)) {
+          return punctuationFree;
+        }
+
+        final key = punctuationFree.toLowerCase();
+        return knownNames[key] ?? _transliterateLatinWord(key);
+      }).where((word) => word.trim().isNotEmpty).toList();
+
+      return _normalizeNameSpaces(words.join(' '));
+    }
+
+    const knownNames = <String, String>{
+      'أحمد': 'Ahmad',
+      'احمد': 'Ahmad',
+      'محمد': 'Mohammad',
+      'محمود': 'Mahmoud',
+      'علي': 'Ali',
+      'سارة': 'Sarah',
+      'ساره': 'Sarah',
+      'سالي': 'Sali',
+      'رنا': 'Rana',
+      'رانيا': 'Rania',
+      'راميا': 'Ramia',
+      'صلاح': 'Salah',
+      'عمر': 'Omar',
+      'نور': 'Nour',
+      'عدنان': 'Adnan',
+      'يوسف': 'Yousef',
+      'خالد': 'Khaled',
+      'حسن': 'Hassan',
+      'حسين': 'Hussein',
+      'ريم': 'Reem',
+      'لمى': 'Lama',
+      'لينا': 'Lina',
+      'دانا': 'Dana',
+      'سامي': 'Sami',
+      'سمير': 'Sameer',
+      'مها': 'Maha',
+      'آية': 'Aya',
+      'ايه': 'Aya',
+      'أمل': 'Amal',
+      'امل': 'Amal',
+      'هدى': 'Huda',
+    };
+
+    final words = clean
+        .split(RegExp(r'\s+'))
+        .where((word) => word.trim().isNotEmpty)
+        .map((word) => knownNames[word.trim()] ?? word.trim())
+        .where((word) => word.isNotEmpty)
+        .toList();
+
+    return _normalizeNameSpaces(words.join(' '));
+  }
+
+  static String doctorNameByLanguage(String name) {
+    final personName = personNameByLanguage(name);
+
+    if (isArabic) {
+      return _normalizeNameSpaces('د. $personName');
+    }
+
+    return _normalizeNameSpaces('Dr. $personName');
+  }
+
+  static String _transliterateLatinWord(String word) {
+    var result = word.toLowerCase();
+
+    const combinations = <String, String>{
+      'sh': 'ش',
+      'ch': 'تش',
+      'kh': 'خ',
+      'gh': 'غ',
+      'th': 'ث',
+      'dh': 'ذ',
+      'ph': 'ف',
+      'oo': 'و',
+      'ou': 'و',
+      'ee': 'ي',
+      'ai': 'اي',
+      'ay': 'اي',
+    };
+
+    combinations.forEach((key, value) {
+      result = result.replaceAll(key, value);
+    });
+
+    const letters = <String, String>{
+      'a': 'ا',
+      'b': 'ب',
+      'c': 'ك',
+      'd': 'د',
+      'e': 'ي',
+      'f': 'ف',
+      'g': 'ج',
+      'h': 'ه',
+      'i': 'ي',
+      'j': 'ج',
+      'k': 'ك',
+      'l': 'ل',
+      'm': 'م',
+      'n': 'ن',
+      'o': 'و',
+      'p': 'ب',
+      'q': 'ق',
+      'r': 'ر',
+      's': 'س',
+      't': 'ت',
+      'u': 'و',
+      'v': 'ف',
+      'w': 'و',
+      'x': 'كس',
+      'y': 'ي',
+      'z': 'ز',
+    };
+
+    final buffer = StringBuffer();
+
+    for (final rune in result.runes) {
+      final character = String.fromCharCode(rune);
+      buffer.write(letters[character] ?? character);
+    }
+
+    return buffer.toString();
+  }
+
+  static String specialtyByLanguage(String specialty) {
+    final clean = specialty.trim();
+    if (clean.isEmpty) return isArabic ? 'أخصائي' : 'Specialist';
+
+    final value = clean.toLowerCase();
+
+    if (isArabic) {
+      if (value.contains('card') || value.contains('heart') || value.contains('قلب')) return 'القلب';
+      if (value.contains('dent') || value.contains('teeth') || value.contains('أسنان') || value.contains('اسنان')) return 'الأسنان';
+      if (value.contains('neuro') || value.contains('nerve') || value.contains('أعصاب') || value.contains('اعصاب')) return 'الأعصاب';
+      if (value.contains('pedia') || value.contains('child') || value.contains('أطفال') || value.contains('اطفال')) return 'الأطفال';
+      if (value.contains('derma') || value.contains('skin') || value.contains('جلدية')) return 'الجلدية';
+      if (value.contains('oph') || value.contains('eye') || value.contains('عيون')) return 'العيون';
+      if (value.contains('surg') || value.contains('جراحة')) return 'الجراحة';
+      if (value.contains('internal') || value.contains('باطن')) return 'الباطنية';
+      if (value.contains('orth') || value.contains('bone') || value.contains('عظام')) return 'العظام';
+      if (value.contains('gyne') || value.contains('نسائ')) return 'النسائية والتوليد';
+      if (value.contains('psy') || value.contains('نفس')) return 'الطب النفسي';
+      if (value.contains('general') || value.contains('عام')) return 'الطب العام';
+      return clean;
+    }
+
+    if (value.contains('قلب')) return 'Cardiology';
+    if (value.contains('أسنان') || value.contains('اسنان')) return 'Dentistry';
+    if (value.contains('أعصاب') || value.contains('اعصاب')) return 'Neurology';
+    if (value.contains('أطفال') || value.contains('اطفال')) return 'Pediatrics';
+    if (value.contains('جلدية')) return 'Dermatology';
+    if (value.contains('عيون')) return 'Ophthalmology';
+    if (value.contains('جراحة')) return 'Surgery';
+    if (value.contains('باطن')) return 'Internal Medicine';
+    if (value.contains('عظام')) return 'Orthopedics';
+    if (value.contains('نسائ')) return 'Gynecology';
+    if (value.contains('نفسي')) return 'Psychiatry';
+    if (value.contains('عام')) return 'General Medicine';
+
+    return clean;
+  }
+
 }

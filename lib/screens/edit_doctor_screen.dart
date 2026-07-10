@@ -1,4 +1,4 @@
-import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
@@ -32,7 +32,7 @@ class _EditDoctorScreenState extends State<EditDoctorScreen> {
   bool isLoadingSpecialties = true;
 
   String imageUrl = '';
-  File? selectedImageFile;
+  Uint8List? selectedImageBytes;
 
   @override
   void initState() {
@@ -41,7 +41,15 @@ class _EditDoctorScreenState extends State<EditDoctorScreen> {
     nameController.text = widget.doctor['fullName']?.toString() ?? '';
     phoneController.text = widget.doctor['phoneNumber']?.toString() ?? '';
     emailController.text = widget.doctor['email']?.toString() ?? '';
-    imageUrl = widget.doctor['image']?.toString() ?? '';
+    imageUrl = ApiService.fixImageUrl(
+      (
+          widget.doctor['image'] ??
+              widget.doctor['Image'] ??
+              widget.doctor['doctorImage'] ??
+              widget.doctor['DoctorImage'] ??
+              ''
+      ).toString(),
+    );
 
     selectedSpecialtyId = int.tryParse(
       widget.doctor['specialtyId']?.toString() ?? '',
@@ -81,8 +89,8 @@ class _EditDoctorScreenState extends State<EditDoctorScreen> {
       imageUrl.startsWith('http://') || imageUrl.startsWith('https://');
 
   ImageProvider? get previewImage {
-    if (selectedImageFile != null) {
-      return FileImage(selectedImageFile!);
+    if (selectedImageBytes != null) {
+      return MemoryImage(selectedImageBytes!);
     }
 
     if (hasNetworkImage) {
@@ -103,32 +111,60 @@ class _EditDoctorScreenState extends State<EditDoctorScreen> {
   }
 
   Future<void> pickAndUploadImage() async {
+    if (isLoading) return;
+
     final XFile? picked = await picker.pickImage(
       source: ImageSource.gallery,
       imageQuality: 80,
+      maxWidth: 1200,
     );
 
     if (picked == null) return;
 
+    final bytes = await picked.readAsBytes();
+
+    if (!mounted) return;
+
     setState(() {
-      selectedImageFile = File(picked.path);
+      selectedImageBytes = bytes;
       isLoading = true;
     });
 
     try {
-      final uploadedUrl = await ApiService.uploadDoctorImage(picked.path);
+      final uploadedUrl =
+      await ApiService.uploadDoctorImageBytes(
+        bytes: bytes,
+        fileName: picked.name.isNotEmpty
+            ? picked.name
+            : 'doctor.jpg',
+      );
+
+      if (!mounted) return;
 
       setState(() {
-        imageUrl = uploadedUrl;
+        // هذا الرابط نفسه سيُرسل إلى updateDoctor عند الضغط على حفظ.
+        imageUrl = uploadedUrl.trim();
       });
 
-      showMessage('Image uploaded successfully');
+      showMessage(
+        AppStrings.isArabic
+            ? 'تم رفع الصورة، اضغطي تحديث الطبيب لحفظها'
+            : 'Image uploaded. Press Update Doctor to save it.',
+      );
     } catch (e) {
-      showMessage('Failed to upload image');
-    }
+      if (!mounted) return;
 
-    if (mounted) {
-      setState(() => isLoading = false);
+      showMessage(
+        AppStrings.isArabic
+            ? 'فشل رفع الصورة: $e'
+            : 'Failed to upload image: $e',
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          isLoading = false;
+        });
+      }
     }
   }
 
@@ -154,14 +190,18 @@ class _EditDoctorScreenState extends State<EditDoctorScreen> {
     setState(() => isLoading = true);
 
     try {
+      final cleanImageUrl = imageUrl.trim();
+
       await ApiService.updateDoctor(
         doctorId: doctorId,
         fullName: nameController.text.trim(),
         specialtyId: selectedSpecialtyId!,
         phoneNumber: phoneController.text.trim(),
         email: emailController.text.trim(),
-        image: imageUrl,
+        image: cleanImageUrl,
       );
+
+      ApiService.clearDoctorsCache();
 
       if (!mounted) return;
 

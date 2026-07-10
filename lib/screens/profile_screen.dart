@@ -1,15 +1,16 @@
+import 'dart:async';
 import 'dart:convert';
 
-import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter/material.dart';
 
 import '../language/app_strings.dart';
-import '../services/user_session.dart';
 import '../services/api_service.dart';
-import 'login_screen.dart';
-import 'edit_profile_screen.dart';
-import 'change_password_screen.dart';
+import '../services/user_session.dart';
 import 'admin_dashboard_screen.dart';
+import 'change_password_screen.dart';
+import 'edit_profile_screen.dart';
+import 'login_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   final VoidCallback? onLanguageChanged;
@@ -25,68 +26,167 @@ class ProfileScreen extends StatefulWidget {
 
 class _ProfileScreenState extends State<ProfileScreen> {
   int appointmentCount = 0;
-  bool isLoadingAppointmentCount = false;
+
+  bool isLoadingAppointmentCount = true;
+  bool isRefreshingAppointmentCount = false;
+  bool isLoggingOut = false;
+
+  int? _screenUserId;
+  int _requestVersion = 0;
 
   @override
   void initState() {
     super.initState();
-    loadAppointmentCount();
+
+    _screenUserId = UserSession.userId;
+    ApiService.appointmentsVersion.addListener(
+      _onAppointmentsChanged,
+    );
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      // تحميل واحد فقط عند فتح البروفايل، بدون تحديث إجباري متكرر.
+      _loadAppointmentCount(forceRefresh: false);
+    });
   }
 
-  Future<void> loadAppointmentCount() async {
-    if (isLoadingAppointmentCount) return;
+  void _onAppointmentsChanged() {
+    if (!mounted || isRefreshingAppointmentCount) return;
 
-    final userId = UserSession.userId ?? 0;
-    if (userId == 0) return;
+    // يتحدث فقط بعد حجز/تأكيد/إكمال/إلغاء/حذف حقيقي.
+    _loadAppointmentCount(forceRefresh: false);
+  }
 
-    isLoadingAppointmentCount = true;
+  @override
+  void dispose() {
+    ApiService.appointmentsVersion.removeListener(
+      _onAppointmentsChanged,
+    );
+    _requestVersion++;
+    super.dispose();
+  }
 
-    try {
-      final count = await ApiService.getAppointmentCountByUser(userId);
+  Future<void> _loadAppointmentCount({
+    bool forceRefresh = false,
+  }) async {
+    final currentUserId = UserSession.userId ?? 0;
 
-      if (!mounted) return;
-
-      setState(() {
-        appointmentCount = count;
-      });
-    } catch (_) {
+    if (currentUserId <= 0) {
       if (!mounted) return;
 
       setState(() {
         appointmentCount = 0;
+        isLoadingAppointmentCount = false;
+        isRefreshingAppointmentCount = false;
       });
-    } finally {
-      isLoadingAppointmentCount = false;
+
+      return;
+    }
+
+    // يمنع تشغيل أكثر من تحديث في نفس الوقت.
+    if (isRefreshingAppointmentCount) return;
+
+    final requestVersion = ++_requestVersion;
+
+    if (mounted) {
+      setState(() {
+        if (isLoadingAppointmentCount) {
+          isLoadingAppointmentCount = true;
+        } else {
+          isRefreshingAppointmentCount = true;
+        }
+      });
+    }
+
+    try {
+      final count = await ApiService
+          .getAppointmentCountByUser(
+        currentUserId,
+        forceRefresh: forceRefresh,
+      )
+          .timeout(const Duration(seconds: 12));
+
+      // يمنع طلب حساب قديم من تحديث حساب جديد.
+      if (!mounted ||
+          requestVersion != _requestVersion ||
+          UserSession.userId != currentUserId ||
+          _screenUserId != currentUserId) {
+        return;
+      }
+
+      setState(() {
+        appointmentCount = count;
+        isLoadingAppointmentCount = false;
+        isRefreshingAppointmentCount = false;
+      });
+    } on TimeoutException {
+      if (!mounted ||
+          requestVersion != _requestVersion ||
+          UserSession.userId != currentUserId) {
+        return;
+      }
+
+      setState(() {
+        isLoadingAppointmentCount = false;
+        isRefreshingAppointmentCount = false;
+      });
+    } catch (_) {
+      if (!mounted ||
+          requestVersion != _requestVersion ||
+          UserSession.userId != currentUserId) {
+        return;
+      }
+
+      setState(() {
+        isLoadingAppointmentCount = false;
+        isRefreshingAppointmentCount = false;
+      });
     }
   }
 
+  Future<void> _openEditProfile() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => const EditProfileScreen(),
+      ),
+    );
 
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    loadAppointmentCount();
+    if (!mounted) return;
+
+    // نحدّث بيانات البروفايل المعروضة فقط.
+    // لا نعيد تحميل الحجوزات لأن تعديل البروفايل لا يغيّر عددها.
+    setState(() {});
   }
 
+  Future<void> _logout() async {
+    if (isLoggingOut) return;
 
+    setState(() {
+      isLoggingOut = true;
+    });
+
+    try {
+      // أوقف أي طلب قديم قبل تبديل الحساب.
+      _requestVersion++;
+
+      // امسح كاش الحساب القديم قبل مسح UserSession.
+      ApiService.clearSessionCaches();
+      await UserSession.clear();
+    } finally {
+      if (!mounted) return;
+
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(
+          builder: (_) => const LoginScreen(),
+        ),
+            (route) => false,
+      );
+    }
+  }
 
   String translateName(String value) {
-    if (!AppStrings.isArabic) return value;
-
-    return value
-        .replaceAll('Rana', 'رنا')
-        .replaceAll('Salah', 'صلاح')
-        .replaceAll('Sarah', 'سارة')
-        .replaceAll('Sara', 'سارة')
-        .replaceAll('Ahmad', 'أحمد')
-        .replaceAll('Ahmed', 'أحمد')
-        .replaceAll('Ali', 'علي')
-        .replaceAll('Mohammad', 'محمد')
-        .replaceAll('Mohammed', 'محمد')
-        .replaceAll('Omar', 'عمر')
-        .replaceAll('Nour', 'نور')
-        .replaceAll('Adnan', 'عدنان')
-        .replaceAll('Rania', 'رانيا')
-        .replaceAll('Ramia', 'راميا');
+    return AppStrings.personNameByLanguage(value);
   }
 
   String translateAddress(String value) {
@@ -138,8 +238,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     if (AppStrings.isArabic) {
       if (v == 'male' || v == 'm' || v == 'ذكر') return 'ذكر';
-      if (v == 'female' || v == 'f' || v == 'أنثى' || v == 'انثى') return 'أنثى';
-      if (v == 'not available' || v == 'n/a') return AppStrings.notAvailable;
+
+      if (v == 'female' ||
+          v == 'f' ||
+          v == 'أنثى' ||
+          v == 'انثى') {
+        return 'أنثى';
+      }
+
+      if (v == 'not available' || v == 'n/a') {
+        return AppStrings.notAvailable;
+      }
     } else {
       if (v == 'ذكر') return 'Male';
       if (v == 'أنثى' || v == 'انثى') return 'Female';
@@ -163,14 +272,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   ImageProvider getProfileImage() {
-    final imagePath = UserSession.profileImage ?? '';
+    final imagePath = UserSession.profileImage?.trim() ?? '';
 
-    if (imagePath.startsWith('data:image')) {
-      final base64Part = imagePath.split(',').last;
-      return MemoryImage(base64Decode(base64Part));
+    try {
+      if (imagePath.startsWith('data:image')) {
+        final base64Part = imagePath.split(',').last;
+        return MemoryImage(base64Decode(base64Part));
+      }
+    } catch (_) {
+      return const AssetImage('assets/images/profile.jpg');
     }
 
-    if (imagePath.startsWith('http://') || imagePath.startsWith('https://')) {
+    if (imagePath.startsWith('http://') ||
+        imagePath.startsWith('https://')) {
       return CachedNetworkImageProvider(imagePath);
     }
 
@@ -189,7 +303,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
     widget.onLanguageChanged?.call();
 
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(AppStrings.languageChanged)),
+      SnackBar(
+        content: Text(AppStrings.languageChanged),
+      ),
     );
   }
 
@@ -197,14 +313,35 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Widget build(BuildContext context) {
     const primary = Color(0xff5B2EFF);
 
-    final fullName = translateName(UserSession.fullName ?? AppStrings.noName);
-    final email = UserSession.email ?? AppStrings.noEmail;
-    final phone = UserSession.phoneNumber ?? AppStrings.notAvailable;
-    final address = translateAddress(UserSession.address ?? AppStrings.notAvailable);
-    final gender = translateGender(UserSession.gender ?? AppStrings.notAvailable);
+    final fullName = translateName(
+      UserSession.fullName?.trim().isNotEmpty == true
+          ? UserSession.fullName!
+          : AppStrings.noName,
+    );
+
+    final email = UserSession.email?.trim().isNotEmpty == true
+        ? UserSession.email!
+        : AppStrings.noEmail;
+
+    final phone = UserSession.phoneNumber?.trim().isNotEmpty == true
+        ? UserSession.phoneNumber!
+        : AppStrings.notAvailable;
+
+    final address = translateAddress(
+      UserSession.address ?? '',
+    );
+
+    final gender = translateGender(
+      UserSession.gender ?? '',
+    );
+
+    final appointmentValue = isLoadingAppointmentCount
+        ? (AppStrings.isArabic ? 'جاري التحميل...' : 'Loading...')
+        : '$appointmentCount ${AppStrings.appointments}';
 
     return Directionality(
-      textDirection: AppStrings.isArabic ? TextDirection.rtl : TextDirection.ltr,
+      textDirection:
+      AppStrings.isArabic ? TextDirection.rtl : TextDirection.ltr,
       child: Scaffold(
         backgroundColor: const Color(0xffF7F8FC),
         appBar: AppBar(
@@ -212,6 +349,23 @@ class _ProfileScreenState extends State<ProfileScreen> {
           backgroundColor: Colors.white,
           foregroundColor: Colors.black,
           elevation: 0,
+          actions: [
+            IconButton(
+              tooltip: AppStrings.isArabic ? 'تحديث' : 'Refresh',
+              onPressed: isRefreshingAppointmentCount
+                  ? null
+                  : () => _loadAppointmentCount(forceRefresh: true),
+              icon: isRefreshingAppointmentCount
+                  ? const SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                ),
+              )
+                  : const Icon(Icons.refresh),
+            ),
+          ],
         ),
         body: Center(
           child: Container(
@@ -232,16 +386,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         right: 0,
                         bottom: 0,
                         child: InkWell(
-                          onTap: () async {
-                            await Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => const EditProfileScreen(),
-                              ),
-                            );
-
-                            if (mounted) setState(() {});
-                          },
+                          onTap: _openEditProfile,
                           child: Container(
                             padding: const EdgeInsets.all(8),
                             decoration: const BoxDecoration(
@@ -264,8 +409,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   child: Text(
                     fullName,
                     textAlign: TextAlign.center,
-                    textDirection:
-                    AppStrings.isArabic ? TextDirection.rtl : TextDirection.ltr,
+                    textDirection: AppStrings.isArabic
+                        ? TextDirection.rtl
+                        : TextDirection.ltr,
                     style: const TextStyle(
                       fontSize: 24,
                       fontWeight: FontWeight.bold,
@@ -277,13 +423,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   child: Text(
                     email,
                     textDirection: TextDirection.ltr,
+                    textAlign: TextAlign.center,
                     style: const TextStyle(color: Colors.grey),
                   ),
                 ),
                 const SizedBox(height: 6),
                 Center(
                   child: Text(
-                    '${AppStrings.role}: ${translateRole(UserSession.role ?? 'Patient')}',
+                    '${AppStrings.role}: '
+                        '${translateRole(UserSession.role ?? 'Patient')}',
                     style: TextStyle(
                       color: UserSession.isAdmin ? primary : Colors.grey,
                       fontWeight: FontWeight.bold,
@@ -293,7 +441,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 const SizedBox(height: 6),
                 Center(
                   child: Text(
-                    '${AppStrings.userId}: ${UserSession.userId}',
+                    '${AppStrings.userId}: ${UserSession.userId ?? '-'}',
                     style: const TextStyle(
                       color: Colors.red,
                       fontWeight: FontWeight.bold,
@@ -304,7 +452,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ProfileItem(
                   icon: Icons.calendar_month,
                   title: AppStrings.myAppointments,
-                  value: '$appointmentCount ${AppStrings.appointments}',
+                  value: appointmentValue,
                 ),
                 ProfileItem(
                   icon: Icons.medical_services,
@@ -329,155 +477,121 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ProfileItem(
                   icon: Icons.language,
                   title: AppStrings.language,
-                  value: AppStrings.isArabic ? AppStrings.arabic : AppStrings.english,
+                  value: AppStrings.isArabic
+                      ? AppStrings.arabic
+                      : AppStrings.english,
                 ),
                 const SizedBox(height: 12),
-                SizedBox(
-                  height: 52,
-                  child: ElevatedButton.icon(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.white,
-                      foregroundColor: primary,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                    ),
-                    icon: const Icon(Icons.language),
-                    label: Text(
-                      AppStrings.changeLanguageText,
-                      textDirection:
-                      AppStrings.isArabic ? TextDirection.rtl : TextDirection.ltr,
-                    ),
-                    onPressed: () {
-                      changeLanguage(
-                        AppStrings.isArabic
-                            ? const Locale('en')
-                            : const Locale('ar'),
-                      );
-                    },
-                  ),
+                _actionButton(
+                  icon: Icons.language,
+                  title: AppStrings.changeLanguageText,
+                  foregroundColor: primary,
+                  backgroundColor: Colors.white,
+                  onPressed: () {
+                    changeLanguage(
+                      AppStrings.isArabic
+                          ? const Locale('en')
+                          : const Locale('ar'),
+                    );
+                  },
                 ),
                 const SizedBox(height: 12),
-                SizedBox(
-                  height: 52,
-                  child: ElevatedButton.icon(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.white,
-                      foregroundColor: primary,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                    ),
-                    icon: const Icon(Icons.edit),
-                    label: Text(
-                      AppStrings.editProfile,
-                      textDirection:
-                      AppStrings.isArabic ? TextDirection.rtl : TextDirection.ltr,
-                    ),
-                    onPressed: () async {
-                      await Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => const EditProfileScreen(),
-                        ),
-                      );
-
-                      if (mounted) setState(() {});
-                    },
-                  ),
+                _actionButton(
+                  icon: Icons.edit,
+                  title: AppStrings.editProfile,
+                  foregroundColor: primary,
+                  backgroundColor: Colors.white,
+                  onPressed: _openEditProfile,
                 ),
                 const SizedBox(height: 12),
-                SizedBox(
-                  height: 52,
-                  child: ElevatedButton.icon(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.white,
-                      foregroundColor: primary,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
+                _actionButton(
+                  icon: Icons.lock,
+                  title: AppStrings.changePassword,
+                  foregroundColor: primary,
+                  backgroundColor: Colors.white,
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const ChangePasswordScreen(),
                       ),
-                    ),
-                    icon: const Icon(Icons.lock),
-                    label: Text(
-                      AppStrings.changePassword,
-                      textDirection:
-                      AppStrings.isArabic ? TextDirection.rtl : TextDirection.ltr,
-                    ),
+                    );
+                  },
+                ),
+                if (UserSession.isAdmin) ...[
+                  const SizedBox(height: 12),
+                  _actionButton(
+                    icon: Icons.admin_panel_settings,
+                    title: AppStrings.adminDashboard,
+                    foregroundColor: primary,
+                    backgroundColor: Colors.white,
                     onPressed: () {
                       Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (_) => const ChangePasswordScreen(),
+                          builder: (_) => const AdminDashboardScreen(),
                         ),
                       );
                     },
-                  ),
-                ),
-                if (UserSession.isAdmin) ...[
-                  const SizedBox(height: 12),
-                  SizedBox(
-                    height: 52,
-                    child: ElevatedButton.icon(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.white,
-                        foregroundColor: primary,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                      ),
-                      icon: const Icon(Icons.admin_panel_settings),
-                      label: Text(
-                        AppStrings.adminDashboard,
-                        textDirection:
-                        AppStrings.isArabic ? TextDirection.rtl : TextDirection.ltr,
-                      ),
-                      onPressed: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => const AdminDashboardScreen(),
-                          ),
-                        );
-                      },
-                    ),
                   ),
                 ],
                 const SizedBox(height: 12),
-                SizedBox(
-                  height: 52,
-                  child: ElevatedButton.icon(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: primary,
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                    ),
-                    icon: const Icon(Icons.logout),
-                    label: Text(
-                      AppStrings.logout,
-                      textDirection:
-                      AppStrings.isArabic ? TextDirection.rtl : TextDirection.ltr,
-                    ),
-                    onPressed: () async {
-                      await UserSession.clear();
-
-                      if (!mounted) return;
-
-                      Navigator.pushAndRemoveUntil(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => const LoginScreen(),
-                        ),
-                            (route) => false,
-                      );
-                    },
-                  ),
+                _actionButton(
+                  icon: Icons.logout,
+                  title: isLoggingOut
+                      ? (AppStrings.isArabic
+                      ? 'جاري تسجيل الخروج...'
+                      : 'Logging out...')
+                      : AppStrings.logout,
+                  foregroundColor: Colors.white,
+                  backgroundColor: primary,
+                  onPressed: isLoggingOut ? null : _logout,
+                  loading: isLoggingOut,
                 ),
               ],
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _actionButton({
+    required IconData icon,
+    required String title,
+    required Color foregroundColor,
+    required Color backgroundColor,
+    required VoidCallback? onPressed,
+    bool loading = false,
+  }) {
+    return SizedBox(
+      height: 52,
+      child: ElevatedButton.icon(
+        style: ElevatedButton.styleFrom(
+          backgroundColor: backgroundColor,
+          foregroundColor: foregroundColor,
+          disabledBackgroundColor: backgroundColor.withOpacity(.65),
+          disabledForegroundColor: foregroundColor.withOpacity(.8),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+        ),
+        icon: loading
+            ? SizedBox(
+          width: 19,
+          height: 19,
+          child: CircularProgressIndicator(
+            strokeWidth: 2,
+            color: foregroundColor,
+          ),
+        )
+            : Icon(icon),
+        label: Text(
+          title,
+          textDirection:
+          AppStrings.isArabic ? TextDirection.rtl : TextDirection.ltr,
+        ),
+        onPressed: onPressed,
       ),
     );
   }
@@ -499,6 +613,13 @@ class ProfileItem extends StatelessWidget {
   Widget build(BuildContext context) {
     const primary = Color(0xff5B2EFF);
 
+    final alignment = AppStrings.isArabic
+        ? CrossAxisAlignment.end
+        : CrossAxisAlignment.start;
+
+    final textAlignment =
+    AppStrings.isArabic ? TextAlign.right : TextAlign.left;
+
     return Container(
       margin: const EdgeInsets.only(bottom: 14),
       padding: const EdgeInsets.all(16),
@@ -507,36 +628,52 @@ class ProfileItem extends StatelessWidget {
         borderRadius: BorderRadius.circular(18),
       ),
       child: Row(
-        textDirection: AppStrings.isArabic ? TextDirection.rtl : TextDirection.ltr,
+        textDirection:
+        AppStrings.isArabic ? TextDirection.rtl : TextDirection.ltr,
         children: [
           CircleAvatar(
             radius: 24,
             backgroundColor: const Color(0xffEDE7FF),
-            child: Icon(icon, color: primary),
+            child: Icon(
+              icon,
+              color: primary,
+            ),
           ),
           const SizedBox(width: 14),
           Expanded(
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+              crossAxisAlignment: alignment,
               children: [
-                Text(
-                  title,
-                  textDirection:
-                  AppStrings.isArabic ? TextDirection.rtl : TextDirection.ltr,
-                  textAlign: AppStrings.isArabic ? TextAlign.right : TextAlign.left,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontWeight: FontWeight.bold),
+                SizedBox(
+                  width: double.infinity,
+                  child: Text(
+                    title,
+                    textDirection: AppStrings.isArabic
+                        ? TextDirection.rtl
+                        : TextDirection.ltr,
+                    textAlign: textAlignment,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
                 ),
                 const SizedBox(height: 4),
-                Text(
-                  value,
-                  textDirection:
-                  AppStrings.isArabic ? TextDirection.rtl : TextDirection.ltr,
-                  textAlign: AppStrings.isArabic ? TextAlign.right : TextAlign.left,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(color: Colors.grey),
+                SizedBox(
+                  width: double.infinity,
+                  child: Text(
+                    value,
+                    textDirection: AppStrings.isArabic
+                        ? TextDirection.rtl
+                        : TextDirection.ltr,
+                    textAlign: textAlignment,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Colors.grey,
+                    ),
+                  ),
                 ),
               ],
             ),
