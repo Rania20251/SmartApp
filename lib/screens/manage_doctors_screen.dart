@@ -499,17 +499,21 @@ class _ManageDoctorsScreenState extends State<ManageDoctorsScreen> {
                         const SizedBox(width: 14),
                         Expanded(
                           child: Column(
-                            crossAxisAlignment: AppStrings.isArabic
-                                ? CrossAxisAlignment.end
-                                : CrossAxisAlignment.start,
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                translateDoctorName(doctor['fullName']?.toString() ?? AppStrings.doctor),
+                                translateDoctorName(
+                                  doctor['fullName']?.toString() ??
+                                      AppStrings.doctor,
+                                ),
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 textAlign: AppStrings.isArabic
                                     ? TextAlign.right
                                     : TextAlign.left,
+                                textDirection: AppStrings.isArabic
+                                    ? TextDirection.rtl
+                                    : TextDirection.ltr,
                                 style: const TextStyle(
                                   fontSize: 17,
                                   height: 1.15,
