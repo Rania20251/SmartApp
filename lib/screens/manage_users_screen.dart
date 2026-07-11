@@ -38,43 +38,107 @@ class _ManageUsersScreenState extends State<ManageUsersScreen> {
   }
 
   String translateUserName(String name) {
-    if (!AppStrings.isArabic) return name;
-
-    final clean = name.trim();
+    final clean = name
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
 
     if (clean.isEmpty) return AppStrings.noName;
 
-    return clean
-        .replaceAll(RegExp(r'\bHana\b', caseSensitive: false), 'هناء')
-        .replaceAll(RegExp(r'\bHala\b', caseSensitive: false), 'هالة')
-        .replaceAll(RegExp(r'\bRana\b', caseSensitive: false), 'رنا')
-        .replaceAll(RegExp(r'\bRania\b', caseSensitive: false), 'رانيا')
-        .replaceAll(RegExp(r'\bRamia\b', caseSensitive: false), 'راميا')
-        .replaceAll(RegExp(r'\bSalah\b', caseSensitive: false), 'صلاح')
-        .replaceAll(RegExp(r'\bSarah\b', caseSensitive: false), 'سارة')
-        .replaceAll(RegExp(r'\bSara\b', caseSensitive: false), 'سارة')
-        .replaceAll(RegExp(r'\bAhmad\b', caseSensitive: false), 'أحمد')
-        .replaceAll(RegExp(r'\bAhmed\b', caseSensitive: false), 'أحمد')
-        .replaceAll(RegExp(r'\bAli\b', caseSensitive: false), 'علي')
-        .replaceAll(RegExp(r'\bMohammad\b', caseSensitive: false), 'محمد')
-        .replaceAll(RegExp(r'\bMohammed\b', caseSensitive: false), 'محمد')
-        .replaceAll(RegExp(r'\bOmar\b', caseSensitive: false), 'عمر')
-        .replaceAll(RegExp(r'\bNour\b', caseSensitive: false), 'نور')
-        .replaceAll(RegExp(r'\bAdnan\b', caseSensitive: false), 'عدنان')
-        .replaceAll(RegExp(r'\bOsama\b', caseSensitive: false), 'أسامة')
-        .replaceAll(RegExp(r'\bMurad\b', caseSensitive: false), 'مراد')
-        .replaceAll(RegExp(r'\bAya\b', caseSensitive: false), 'آية')
-        .replaceAll(RegExp(r'\bNoor\b', caseSensitive: false), 'نور')
-        .replaceAll(RegExp(r'\bLina\b', caseSensitive: false), 'لينا')
-        .replaceAll(RegExp(r'\bYara\b', caseSensitive: false), 'يارا')
-        .replaceAll(RegExp(r'\bMona\b', caseSensitive: false), 'منى')
-        .replaceAll(RegExp(r'\bHuda\b', caseSensitive: false), 'هدى')
-        .replaceAll(RegExp(r'\bKhaled\b', caseSensitive: false), 'خالد')
-        .replaceAll(RegExp(r'\bKhalid\b', caseSensitive: false), 'خالد')
-        .replaceAll(RegExp(r'\bYousef\b', caseSensitive: false), 'يوسف')
-        .replaceAll(RegExp(r'\bYusuf\b', caseSensitive: false), 'يوسف')
-        .replaceAll(RegExp(r'\bMariam\b', caseSensitive: false), 'مريم')
-        .replaceAll(RegExp(r'\bMaryam\b', caseSensitive: false), 'مريم');
+    const englishToArabic = <String, String>{
+      'hana': 'هناء',
+      'hala': 'هالة',
+      'amani': 'أماني',
+      'rola': 'رولا',
+      'rana': 'رنا',
+      'rania': 'رانيا',
+      'ramia': 'راميا',
+      'salah': 'صلاح',
+      'sarah': 'سارة',
+      'sara': 'سارة',
+      'ahmad': 'أحمد',
+      'ahmed': 'أحمد',
+      'ali': 'علي',
+      'mohammad': 'محمد',
+      'mohammed': 'محمد',
+      'mohamed': 'محمد',
+      'omar': 'عمر',
+      'nour': 'نور',
+      'noor': 'نور',
+      'adnan': 'عدنان',
+      'osama': 'أسامة',
+      'murad': 'مراد',
+      'aya': 'آية',
+      'lina': 'لينا',
+      'yara': 'يارا',
+      'mona': 'منى',
+      'huda': 'هدى',
+      'khaled': 'خالد',
+      'khalid': 'خالد',
+      'yousef': 'يوسف',
+      'yusuf': 'يوسف',
+      'mariam': 'مريم',
+      'maryam': 'مريم',
+    };
+
+    const arabicToEnglish = <String, String>{
+      'هناء': 'Hana',
+      'هالة': 'Hala',
+      'هاله': 'Hala',
+      'أماني': 'Amani',
+      'اماني': 'Amani',
+      'رولا': 'Rola',
+      'رنا': 'Rana',
+      'رانيا': 'Rania',
+      'راميا': 'Ramia',
+      'صلاح': 'Salah',
+      'سارة': 'Sarah',
+      'ساره': 'Sarah',
+      'أحمد': 'Ahmad',
+      'احمد': 'Ahmad',
+      'علي': 'Ali',
+      'محمد': 'Mohammad',
+      'عمر': 'Omar',
+      'نور': 'Nour',
+      'عدنان': 'Adnan',
+      'أسامة': 'Osama',
+      'اسامة': 'Osama',
+      'مراد': 'Murad',
+      'آية': 'Aya',
+      'ايه': 'Aya',
+      'لينا': 'Lina',
+      'يارا': 'Yara',
+      'منى': 'Mona',
+      'هدى': 'Huda',
+      'خالد': 'Khaled',
+      'يوسف': 'Yousef',
+      'مريم': 'Mariam',
+    };
+
+    final words = clean
+        .split(' ')
+        .where((word) => word.trim().isNotEmpty)
+        .toList();
+
+    if (AppStrings.isArabic) {
+      return words.map((word) {
+        final cleanedWord = word
+            .replaceAll('.', '')
+            .replaceAll(',', '')
+            .trim();
+
+        return englishToArabic[cleanedWord.toLowerCase()] ??
+            cleanedWord;
+      }).join(' ');
+    }
+
+    return words.map((word) {
+      final cleanedWord = word
+          .replaceAll('.', '')
+          .replaceAll(',', '')
+          .trim();
+
+      return arabicToEnglish[cleanedWord] ?? cleanedWord;
+    }).join(' ');
   }
 
   String getUserImage(dynamic user) {

@@ -548,26 +548,54 @@ class LatestPatientsCard extends StatelessWidget {
 
 
   String translatePatientName(String name) {
-    if (!AppStrings.isArabic) return name;
+    final clean = name.trim();
 
-    return name
-        .replaceAll('Hana', 'هناء')
-        .replaceAll('hana', 'هناء')
-        .replaceAll('Hala', 'هالة')
-        .replaceAll('hala', 'هالة')
-        .replaceAll('Rania', 'رانيا')
-        .replaceAll('rania', 'رانيا')
-        .replaceAll('Rana', 'رنا')
-        .replaceAll('rana', 'رنا')
-        .replaceAll('Sarah', 'سارة')
-        .replaceAll('Sara', 'سارة')
-        .replaceAll('Ahmad', 'أحمد')
-        .replaceAll('Ahmed', 'أحمد')
-        .replaceAll('Ali', 'علي')
-        .replaceAll('Mohammad', 'محمد')
-        .replaceAll('Mohammed', 'محمد')
-        .replaceAll('Omar', 'عمر')
-        .replaceAll('Nour', 'نور');
+    if (clean.isEmpty) return AppStrings.noName;
+
+    final normalized = clean.toLowerCase();
+
+    const englishToArabic = <String, String>{
+      'hana': 'هناء',
+      'hala': 'هالة',
+      'amani': 'أماني',
+      'rola': 'رولا',
+      'rania': 'رانيا',
+      'rana': 'رنا',
+      'sarah': 'سارة',
+      'sara': 'سارة',
+      'ahmad': 'أحمد',
+      'ahmed': 'أحمد',
+      'ali': 'علي',
+      'mohammad': 'محمد',
+      'mohammed': 'محمد',
+      'omar': 'عمر',
+      'nour': 'نور',
+      'noor': 'نور',
+    };
+
+    const arabicToEnglish = <String, String>{
+      'هناء': 'Hana',
+      'هالة': 'Hala',
+      'أماني': 'Amani',
+      'اماني': 'Amani',
+      'رولا': 'Rola',
+      'رانيا': 'Rania',
+      'رنا': 'Rana',
+      'سارة': 'Sarah',
+      'ساره': 'Sarah',
+      'أحمد': 'Ahmad',
+      'احمد': 'Ahmad',
+      'علي': 'Ali',
+      'محمد': 'Mohammad',
+      'عمر': 'Omar',
+      'نور': 'Nour',
+    };
+
+    if (AppStrings.isArabic) {
+      return englishToArabic[normalized] ?? clean;
+    }
+
+    return arabicToEnglish[clean] ?? clean;
   }
 
   String getPatientName(dynamic patient) {

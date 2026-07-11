@@ -160,45 +160,102 @@ class _ManageDoctorsScreenState extends State<ManageDoctorsScreen> {
 
 
   String translateDoctorName(String name) {
-    if (!AppStrings.isArabic) return name;
+    var value = name.trim();
 
-    final value = name.toLowerCase().trim();
-
-    if (value.contains('ahmad ali') || value.contains('ahmed ali')) {
-      return 'د. أحمد علي';
+    if (value.isEmpty) {
+      return AppStrings.doctor;
     }
 
-    if (value.contains('sarah ahmad') || value.contains('sara ahmad')) {
-      return 'د. سارة أحمد';
-    }
-
-    if (value.contains('mohammad') || value.contains('mohammed')) {
-      return name
-          .replaceAll('Dr.', 'د.')
-          .replaceAll('dr.', 'د.')
+    if (AppStrings.isArabic) {
+      value = value
+          .replaceAll(RegExp(r'\bDr\.?\s*', caseSensitive: false), '')
+          .replaceAll('دكتور', '')
+          .replaceAll('الدكتور', '')
+          .replaceAll('Ahmad', 'أحمد')
+          .replaceAll('Ahmed', 'أحمد')
+          .replaceAll('Ali', 'علي')
+          .replaceAll('Sara', 'سارة')
+          .replaceAll('Sarah', 'سارة')
+          .replaceAll('Sali', 'سالي')
+          .replaceAll('Sally', 'سالي')
           .replaceAll('Mohammad', 'محمد')
-          .replaceAll('Mohammed', 'محمد');
+          .replaceAll('Mohammed', 'محمد')
+          .replaceAll('Muhammad', 'محمد')
+          .replaceAll('Omar', 'عمر')
+          .replaceAll('Nour', 'نور')
+          .replaceAll('Noor', 'نور')
+          .replaceAll('Adnan', 'عدنان')
+          .replaceAll('Rania', 'رانيا')
+          .replaceAll('Ramia', 'راميا')
+          .replaceAll(RegExp(r'\s+'), ' ')
+          .trim();
+
+      if (!value.startsWith('د.')) {
+        value = 'د. $value';
+      }
+
+      return value;
     }
 
-    return name
-        .replaceAll('Dr.', 'د.')
-        .replaceAll('dr.', 'د.')
-        .replaceAll('Ahmad', 'أحمد')
-        .replaceAll('Ahmed', 'أحمد')
-        .replaceAll('Ali', 'علي')
-        .replaceAll('Sara', 'سارة')
-        .replaceAll('Sarah', 'سارة')
-        .replaceAll('Mohammad', 'محمد')
-        .replaceAll('Mohammed', 'محمد')
-        .replaceAll('Omar', 'عمر')
-        .replaceAll('Nour', 'نور')
-        .replaceAll('Adnan', 'عدنان')
-        .replaceAll('Rania', 'رانيا')
-        .replaceAll('Ramia', 'راميا');
+    value = value
+        .replaceAll('الدكتور', '')
+        .replaceAll('دكتور', '')
+        .replaceAll('د.', '')
+        .replaceAll('أحمد', 'Ahmad')
+        .replaceAll('احمد', 'Ahmad')
+        .replaceAll('علي', 'Ali')
+        .replaceAll('سارة', 'Sara')
+        .replaceAll('سالي', 'Sali')
+        .replaceAll('محمد', 'Mohammad')
+        .replaceAll('عمر', 'Omar')
+        .replaceAll('نور', 'Nour')
+        .replaceAll('عدنان', 'Adnan')
+        .replaceAll('رانيا', 'Rania')
+        .replaceAll('راميا', 'Ramia')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+
+    value = value.replaceFirst(
+      RegExp(r'^Dr\.?\s*', caseSensitive: false),
+      '',
+    );
+
+    return 'Dr. $value';
   }
 
   String translateSpecialtyName(String name) {
-    return AppStrings.specialtyByLanguage(name);
+    final translated = AppStrings.specialtyByLanguage(name).trim();
+
+    if (AppStrings.isArabic) {
+      return translated
+          .replaceAll('Cardiology', 'أمراض القلب')
+          .replaceAll('Dentistry', 'طب الأسنان')
+          .replaceAll('Pediatrics', 'طب الأطفال')
+          .replaceAll('Neurology', 'طب الأعصاب')
+          .replaceAll('Emergency', 'الطوارئ')
+          .replaceAll('Dermatology', 'الأمراض الجلدية')
+          .replaceAll('Ophthalmology', 'طب العيون')
+          .replaceAll('Orthopedics', 'طب العظام')
+          .replaceAll('General Medicine', 'الطب العام')
+          .replaceAll('Internal Medicine', 'الطب الباطني');
+    }
+
+    return translated
+        .replaceAll('أمراض القلب', 'Cardiology')
+        .replaceAll('طب القلب', 'Cardiology')
+        .replaceAll('طب الأسنان', 'Dentistry')
+        .replaceAll('طب الاسنان', 'Dentistry')
+        .replaceAll('طب الأطفال', 'Pediatrics')
+        .replaceAll('طب الاطفال', 'Pediatrics')
+        .replaceAll('طب الأعصاب', 'Neurology')
+        .replaceAll('طب الاعصاب', 'Neurology')
+        .replaceAll('الطوارئ', 'Emergency')
+        .replaceAll('الأمراض الجلدية', 'Dermatology')
+        .replaceAll('الامراض الجلدية', 'Dermatology')
+        .replaceAll('طب العيون', 'Ophthalmology')
+        .replaceAll('طب العظام', 'Orthopedics')
+        .replaceAll('الطب العام', 'General Medicine')
+        .replaceAll('الطب الباطني', 'Internal Medicine');
   }
 
   Future<void> changeDoctorImage(
