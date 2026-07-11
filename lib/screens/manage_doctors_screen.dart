@@ -198,43 +198,7 @@ class _ManageDoctorsScreenState extends State<ManageDoctorsScreen> {
   }
 
   String translateSpecialtyName(String name) {
-    final value = name.toLowerCase().trim();
-
-    if (AppStrings.isArabic) {
-      if (value.contains('cardiology') || value.contains('heart') || value.contains('قلب')) {
-        return 'القلب';
-      }
-      if (value.contains('dentistry') || value.contains('dental') || value.contains('dent') || value.contains('أسنان') || value.contains('اسنان')) {
-        return 'الأسنان';
-      }
-      if (value.contains('neurology') || value.contains('neuro') || value.contains('أعصاب') || value.contains('اعصاب')) {
-        return 'الأعصاب';
-      }
-      if (value.contains('pediatrics') || value.contains('pedia') || value.contains('child') || value.contains('أطفال') || value.contains('اطفال')) {
-        return 'الأطفال';
-      }
-      if (value.contains('dermatology') || value.contains('derma') || value.contains('جلدية')) {
-        return 'الجلدية';
-      }
-      if (value.contains('ophthalmology') || value.contains('eye') || value.contains('eyes') || value.contains('عيون')) {
-        return 'العيون';
-      }
-      if (value.contains('surgery') || value.contains('جراحة')) {
-        return 'الجراحة';
-      }
-
-      return name;
-    }
-
-    if (value.contains('قلب')) return 'Heart';
-    if (value.contains('أسنان') || value.contains('اسنان')) return 'Dentistry';
-    if (value.contains('أعصاب') || value.contains('اعصاب')) return 'Neurology';
-    if (value.contains('أطفال') || value.contains('اطفال')) return 'Pediatrics';
-    if (value.contains('جلدية')) return 'Dermatology';
-    if (value.contains('عيون')) return 'Eyes';
-    if (value.contains('جراحة')) return 'Surgery';
-
-    return name;
+    return AppStrings.specialtyByLanguage(name);
   }
 
   Future<void> changeDoctorImage(

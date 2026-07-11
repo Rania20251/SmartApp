@@ -32,6 +32,7 @@ class _ManageSpecialtiesScreenState extends State<ManageSpecialtiesScreen> {
     {'name': 'healing', 'icon': Icons.healing},
     {'name': 'local_hospital', 'icon': Icons.local_hospital},
     {'name': 'vaccines', 'icon': Icons.vaccines},
+    {'name': 'science', 'icon': Icons.science},
     {'name': 'elderly', 'icon': Icons.elderly},
   ];
 
@@ -58,19 +59,7 @@ class _ManageSpecialtiesScreenState extends State<ManageSpecialtiesScreen> {
   }
 
   String translateSpecialty(String name) {
-    final value = name.toLowerCase().trim();
-
-    if (!AppStrings.isArabic) return name;
-
-    if (value.contains('cardiology') || value.contains('heart')) return 'القلب';
-    if (value.contains('dentistry') || value.contains('dental')) return 'الأسنان';
-    if (value.contains('neurology') || value.contains('neuro')) return 'الأعصاب';
-    if (value.contains('pediatrics') || value.contains('pedia')) return 'الأطفال';
-    if (value.contains('dermatology') || value.contains('derma')) return 'الجلدية';
-    if (value.contains('ophthalmology') || value.contains('eye')) return 'العيون';
-    if (value.contains('surgery')) return 'الجراحة';
-
-    return name;
+    return AppStrings.specialtyByLanguage(name);
   }
 
   void showMessage(String message) {

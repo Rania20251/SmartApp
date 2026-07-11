@@ -424,39 +424,283 @@ class AppStrings {
   }
 
   static String specialtyByLanguage(String specialty) {
-    final clean = specialty.trim();
-    if (clean.isEmpty) return isArabic ? 'أخصائي' : 'Specialist';
+    final clean = specialty
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+
+    if (clean.isEmpty) {
+      return isArabic ? 'أخصائي' : 'Specialist';
+    }
 
     final value = clean.toLowerCase();
 
     if (isArabic) {
-      if (value.contains('card') || value.contains('heart') || value.contains('قلب')) return 'القلب';
-      if (value.contains('dent') || value.contains('teeth') || value.contains('أسنان') || value.contains('اسنان')) return 'الأسنان';
-      if (value.contains('neuro') || value.contains('nerve') || value.contains('أعصاب') || value.contains('اعصاب')) return 'الأعصاب';
-      if (value.contains('pedia') || value.contains('child') || value.contains('أطفال') || value.contains('اطفال')) return 'الأطفال';
-      if (value.contains('derma') || value.contains('skin') || value.contains('جلدية')) return 'الجلدية';
-      if (value.contains('oph') || value.contains('eye') || value.contains('عيون')) return 'العيون';
-      if (value.contains('surg') || value.contains('جراحة')) return 'الجراحة';
-      if (value.contains('internal') || value.contains('باطن')) return 'الباطنية';
-      if (value.contains('orth') || value.contains('bone') || value.contains('عظام')) return 'العظام';
-      if (value.contains('gyne') || value.contains('نسائ')) return 'النسائية والتوليد';
-      if (value.contains('psy') || value.contains('نفس')) return 'الطب النفسي';
-      if (value.contains('general') || value.contains('عام')) return 'الطب العام';
+      if (value.contains('emergency') ||
+          value.contains('er medicine') ||
+          value.contains('urgent care') ||
+          value.contains('طوارئ')) {
+        return 'الطوارئ';
+      }
+
+      if (value.contains('cardiology') ||
+          value.contains('cardiac') ||
+          value.contains('heart') ||
+          value.contains('قلب')) {
+        return 'أمراض القلب';
+      }
+
+      if (value.contains('dentistry') ||
+          value.contains('dental') ||
+          value.contains('dentist') ||
+          value.contains('teeth') ||
+          value.contains('أسنان') ||
+          value.contains('اسنان')) {
+        return 'طب الأسنان';
+      }
+
+      if (value.contains('neurology') ||
+          value.contains('neurologist') ||
+          value.contains('neuro') ||
+          value.contains('nerve') ||
+          value.contains('أعصاب') ||
+          value.contains('اعصاب')) {
+        return 'طب الأعصاب';
+      }
+
+      if (value.contains('pediatrics') ||
+          value.contains('pediatric') ||
+          value.contains('child') ||
+          value.contains('children') ||
+          value.contains('أطفال') ||
+          value.contains('اطفال')) {
+        return 'طب الأطفال';
+      }
+
+      if (value.contains('dermatology') ||
+          value.contains('dermatologist') ||
+          value.contains('derma') ||
+          value.contains('skin') ||
+          value.contains('جلدية') ||
+          value.contains('جلديه')) {
+        return 'الأمراض الجلدية';
+      }
+
+      if (value.contains('ophthalmology') ||
+          value.contains('ophthalmologist') ||
+          value.contains('eye') ||
+          value.contains('vision') ||
+          value.contains('عيون')) {
+        return 'طب العيون';
+      }
+
+      if (value.contains('orthopedics') ||
+          value.contains('orthopedic') ||
+          value.contains('bone') ||
+          value.contains('bones') ||
+          value.contains('عظام')) {
+        return 'جراحة العظام';
+      }
+
+      if (value.contains('internal medicine') ||
+          value.contains('internist') ||
+          value.contains('internal') ||
+          value.contains('باطنية') ||
+          value.contains('باطنيه') ||
+          value.contains('باطن')) {
+        return 'الطب الباطني';
+      }
+
+      if (value.contains('general surgery') ||
+          value.contains('surgery') ||
+          value.contains('surgeon') ||
+          value.contains('جراحة') ||
+          value.contains('جراحه')) {
+        return 'الجراحة العامة';
+      }
+
+      if (value.contains('gynecology') ||
+          value.contains('obstetrics') ||
+          value.contains('ob/gyn') ||
+          value.contains('obgyn') ||
+          value.contains('women') ||
+          value.contains('نسائية') ||
+          value.contains('نسائي') ||
+          value.contains('توليد')) {
+        return 'النسائية والتوليد';
+      }
+
+      if (value.contains('psychiatry') ||
+          value.contains('psychiatrist') ||
+          value.contains('mental health') ||
+          value.contains('نفسي')) {
+        return 'الطب النفسي';
+      }
+
+      if (value.contains('psychology') ||
+          value.contains('psychologist') ||
+          value.contains('علم النفس')) {
+        return 'علم النفس';
+      }
+
+      if (value.contains('ent') ||
+          value.contains('ear nose throat') ||
+          value.contains('otolaryngology') ||
+          value.contains('أنف') ||
+          value.contains('انف') ||
+          value.contains('أذن') ||
+          value.contains('اذن') ||
+          value.contains('حنجرة') ||
+          value.contains('حنجره')) {
+        return 'الأنف والأذن والحنجرة';
+      }
+
+      if (value.contains('urology') ||
+          value.contains('urologist') ||
+          value.contains('urinary') ||
+          value.contains('مسالك')) {
+        return 'المسالك البولية';
+      }
+
+      if (value.contains('pulmonology') ||
+          value.contains('pulmonary') ||
+          value.contains('chest') ||
+          value.contains('lung') ||
+          value.contains('صدر') ||
+          value.contains('رئة') ||
+          value.contains('رئه')) {
+        return 'الأمراض الصدرية';
+      }
+
+      if (value.contains('gastroenterology') ||
+          value.contains('gastro') ||
+          value.contains('digestive') ||
+          value.contains('هضم') ||
+          value.contains('جهاز هضمي')) {
+        return 'الجهاز الهضمي';
+      }
+
+      if (value.contains('endocrinology') ||
+          value.contains('endocrine') ||
+          value.contains('diabetes') ||
+          value.contains('غدد') ||
+          value.contains('سكري')) {
+        return 'الغدد الصماء والسكري';
+      }
+
+      if (value.contains('nephrology') ||
+          value.contains('kidney') ||
+          value.contains('renal') ||
+          value.contains('كلى')) {
+        return 'أمراض الكلى';
+      }
+
+      if (value.contains('oncology') ||
+          value.contains('cancer') ||
+          value.contains('أورام') ||
+          value.contains('اورام')) {
+        return 'الأورام';
+      }
+
+      if (value.contains('hematology') ||
+          value.contains('blood') ||
+          value.contains('دم')) {
+        return 'أمراض الدم';
+      }
+
+      if (value.contains('rheumatology') ||
+          value.contains('rheumatic') ||
+          value.contains('روماتيزم') ||
+          value.contains('مفاصل')) {
+        return 'الروماتيزم والمفاصل';
+      }
+
+      if (value.contains('family medicine') ||
+          value.contains('family doctor') ||
+          value.contains('طب الأسرة') ||
+          value.contains('طب الاسرة') ||
+          value.contains('أسرة') ||
+          value.contains('اسرة')) {
+        return 'طب الأسرة';
+      }
+
+      if (value.contains('general medicine') ||
+          value.contains('general practitioner') ||
+          value.contains('general') ||
+          value.contains('طب عام') ||
+          value.contains('عام')) {
+        return 'الطب العام';
+      }
+
+      if (value.contains('nutrition') ||
+          value.contains('dietitian') ||
+          value.contains('diet') ||
+          value.contains('تغذية') ||
+          value.contains('تغذيه')) {
+        return 'التغذية العلاجية';
+      }
+
+      if (value.contains('physiotherapy') ||
+          value.contains('physical therapy') ||
+          value.contains('rehabilitation') ||
+          value.contains('علاج طبيعي') ||
+          value.contains('تأهيل') ||
+          value.contains('تاهيل')) {
+        return 'العلاج الطبيعي والتأهيل';
+      }
+
+      if (value.contains('laboratory') ||
+          value.contains('laboratories') ||
+          value.contains('medical lab') ||
+          value == 'lab' ||
+          value.contains('labs') ||
+          value.contains('مختبر') ||
+          value.contains('تحاليل')) {
+        return 'المختبرات الطبية';
+      }
+
       return clean;
     }
 
+    if (value.contains('مختبر') || value.contains('تحاليل')) {
+      return 'Medical Laboratories';
+    }
+    if (value.contains('طوارئ')) return 'Emergency Medicine';
     if (value.contains('قلب')) return 'Cardiology';
     if (value.contains('أسنان') || value.contains('اسنان')) return 'Dentistry';
     if (value.contains('أعصاب') || value.contains('اعصاب')) return 'Neurology';
     if (value.contains('أطفال') || value.contains('اطفال')) return 'Pediatrics';
-    if (value.contains('جلدية')) return 'Dermatology';
+    if (value.contains('جلدية') || value.contains('جلديه')) return 'Dermatology';
     if (value.contains('عيون')) return 'Ophthalmology';
-    if (value.contains('جراحة')) return 'Surgery';
-    if (value.contains('باطن')) return 'Internal Medicine';
     if (value.contains('عظام')) return 'Orthopedics';
-    if (value.contains('نسائ')) return 'Gynecology';
-    if (value.contains('نفسي')) return 'Psychiatry';
-    if (value.contains('عام')) return 'General Medicine';
+    if (value.contains('باطن')) return 'Internal Medicine';
+    if (value.contains('جراحة') || value.contains('جراحه')) return 'General Surgery';
+    if (value.contains('نسائ') || value.contains('توليد')) return 'Gynecology and Obstetrics';
+    if (value.contains('طب نفسي')) return 'Psychiatry';
+    if (value.contains('علم النفس')) return 'Psychology';
+    if (value.contains('أنف') ||
+        value.contains('انف') ||
+        value.contains('أذن') ||
+        value.contains('اذن') ||
+        value.contains('حنجرة') ||
+        value.contains('حنجره')) {
+      return 'ENT';
+    }
+    if (value.contains('مسالك')) return 'Urology';
+    if (value.contains('صدر') || value.contains('رئة') || value.contains('رئه')) return 'Pulmonology';
+    if (value.contains('هضم')) return 'Gastroenterology';
+    if (value.contains('غدد') || value.contains('سكري')) return 'Endocrinology and Diabetes';
+    if (value.contains('كلى')) return 'Nephrology';
+    if (value.contains('أورام') || value.contains('اورام')) return 'Oncology';
+    if (value.contains('دم')) return 'Hematology';
+    if (value.contains('روماتيزم') || value.contains('مفاصل')) return 'Rheumatology';
+    if (value.contains('أسرة') || value.contains('اسرة')) return 'Family Medicine';
+    if (value.contains('طب عام') || value == 'عام') return 'General Medicine';
+    if (value.contains('تغذية') || value.contains('تغذيه')) return 'Clinical Nutrition';
+    if (value.contains('علاج طبيعي') ||
+        value.contains('تأهيل') ||
+        value.contains('تاهيل')) {
+      return 'Physiotherapy and Rehabilitation';
+    }
 
     return clean;
   }
