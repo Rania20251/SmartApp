@@ -1039,24 +1039,81 @@ class ApiService {
     required Uint8List bytes,
     required String fileName,
   }) async {
-    await uploadAndSaveDoctorImageBytes(
-      doctorId: doctorId,
-      bytes: bytes,
-      fileName: fileName,
-    );
+    if (doctorId <= 0) {
+      throw Exception('Invalid doctor id');
+    }
+
+    if (bytes.isEmpty) {
+      throw Exception('The selected image is empty');
+    }
+
+    String savedImageUrl;
+
+    try {
+      // المسار المباشر: يرفع الصورة ويربطها بالطبيب في طلب واحد.
+      savedImageUrl = await uploadAndSaveDoctorImageBytes(
+        doctorId: doctorId,
+        bytes: bytes,
+        fileName: fileName,
+      );
+    } catch (_) {
+      // مسار احتياطي يحافظ على التوافق مع نسخة السيرفر القديمة.
+      savedImageUrl = await uploadDoctorImageBytes(
+        bytes: bytes,
+        fileName: fileName,
+      );
+
+      await updateDoctor(
+        doctorId: doctorId,
+        fullName: fullName,
+        specialtyId: specialtyId,
+        phoneNumber: phoneNumber,
+        email: email,
+        image: savedImageUrl,
+      );
+    }
+
+    clearDoctorsCache();
 
     final refreshed = await getDoctorById(
       doctorId,
       forceRefresh: true,
     );
 
-    if (refreshed is! Map) {
-      throw Exception(
-        'Doctor image was saved but the doctor could not be reloaded.',
+    if (refreshed is Map) {
+      final result = Map<String, dynamic>.from(refreshed);
+
+      final refreshedImage = (
+          result['image'] ??
+              result['Image'] ??
+              result['doctorImage'] ??
+              result['DoctorImage'] ??
+              savedImageUrl
+      ).toString();
+
+      final visibleImage = withImageCacheVersion(
+        fixImageUrl(refreshedImage),
+        version: DateTime.now().millisecondsSinceEpoch,
       );
+
+      result['image'] = visibleImage;
+      result['Image'] = visibleImage;
+
+      return result;
     }
 
-    return Map<String, dynamic>.from(refreshed);
+    // حتى لو تعذر إعادة التحميل، نعيد البيانات الموجودة مع رابط الصورة المحفوظ.
+    return <String, dynamic>{
+      'doctorId': doctorId,
+      'fullName': fullName.trim(),
+      'specialtyId': specialtyId,
+      'phoneNumber': phoneNumber.trim(),
+      'email': email.trim(),
+      'image': withImageCacheVersion(
+        fixImageUrl(savedImageUrl),
+        version: DateTime.now().millisecondsSinceEpoch,
+      ),
+    };
   }
 
   static Future<void> deleteDoctor(int doctorId) async {

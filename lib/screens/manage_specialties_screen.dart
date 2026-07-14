@@ -260,66 +260,74 @@ class _ManageSpecialtiesScreenState extends State<ManageSpecialtiesScreen> {
             ),
           ],
         ),
-        body: FutureBuilder<List<dynamic>>(
-          future: specialtiesFuture,
-          builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting) {
-              return const Center(child: CircularProgressIndicator());
-            }
+        body: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 520),
+            child: SizedBox(
+              width: double.infinity,
+              child: FutureBuilder<List<dynamic>>(
+                future: specialtiesFuture,
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
 
-            final specialties = snapshot.data ?? [];
+                  final specialties = snapshot.data ?? [];
 
-            if (specialties.isEmpty) {
-              return Center(child: Text(AppStrings.noSpecialtiesFound));
-            }
+                  if (specialties.isEmpty) {
+                    return Center(child: Text(AppStrings.noSpecialtiesFound));
+                  }
 
-            return ListView.builder(
-              padding: const EdgeInsets.all(18),
-              itemCount: specialties.length,
-              itemBuilder: (context, index) {
-                final specialty = specialties[index];
-                final name = specialty['name']?.toString() ?? '';
-                final icon = specialty['icon']?.toString() ?? '';
+                  return ListView.builder(
+                    padding: const EdgeInsets.all(18),
+                    itemCount: specialties.length,
+                    itemBuilder: (context, index) {
+                      final specialty = specialties[index];
+                      final name = specialty['name']?.toString() ?? '';
+                      final icon = specialty['icon']?.toString() ?? '';
 
-                return Container(
-                  margin: const EdgeInsets.only(bottom: 14),
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Row(
-                    children: [
-                      CircleAvatar(
-                        backgroundColor: primary.withOpacity(.13),
-                        child: Icon(getIconData(icon), color: primary),
-                      ),
-                      const SizedBox(width: 14),
-                      Expanded(
-                        child: Text(
-                          translateSpecialty(name),
-                          style: const TextStyle(
-                            fontSize: 17,
-                            fontWeight: FontWeight.bold,
-                          ),
+                      return Container(
+                        margin: const EdgeInsets.only(bottom: 14),
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(20),
                         ),
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.edit, color: Colors.blue),
-                        onPressed: () => openSpecialtyDialog(
-                          specialty: specialty,
+                        child: Row(
+                          children: [
+                            CircleAvatar(
+                              backgroundColor: primary.withOpacity(.13),
+                              child: Icon(getIconData(icon), color: primary),
+                            ),
+                            const SizedBox(width: 14),
+                            Expanded(
+                              child: Text(
+                                translateSpecialty(name),
+                                style: const TextStyle(
+                                  fontSize: 17,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.edit, color: Colors.blue),
+                              onPressed: () => openSpecialtyDialog(
+                                specialty: specialty,
+                              ),
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.delete, color: Colors.red),
+                              onPressed: () => deleteSpecialty(specialty),
+                            ),
+                          ],
                         ),
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.delete, color: Colors.red),
-                        onPressed: () => deleteSpecialty(specialty),
-                      ),
-                    ],
-                  ),
-                );
-              },
-            );
-          },
+                      );
+                    },
+                  );
+                },
+              ),
+            ),
+          ),
         ),
       ),
     );

@@ -177,6 +177,113 @@ class _ManageMedicalRecordsScreenState
     return value.isEmpty ? fallback : value;
   }
 
+
+  String _translateRecordText(String value) {
+    var text = value.trim();
+
+    if (text.isEmpty) return text;
+
+    if (AppStrings.isArabic) {
+      text = text
+          .replaceAll(
+        RegExp(
+          r'Uploaded medical report',
+          caseSensitive: false,
+        ),
+        'تقرير طبي مرفوع',
+      )
+          .replaceAll(
+        RegExp(
+          r'Medical report',
+          caseSensitive: false,
+        ),
+        'تقرير طبي',
+      )
+          .replaceAll(
+        RegExp(
+          r'Medical record',
+          caseSensitive: false,
+        ),
+        'سجل طبي',
+      )
+          .replaceAll(
+        RegExp(
+          r'Uploaded',
+          caseSensitive: false,
+        ),
+        'تم الرفع',
+      )
+          .replaceAll(
+        RegExp(
+          r'Pending',
+          caseSensitive: false,
+        ),
+        'قيد الانتظار',
+      )
+          .replaceAll(
+        RegExp(
+          r'Completed',
+          caseSensitive: false,
+        ),
+        'مكتمل',
+      )
+          .replaceAll(
+        RegExp(
+          r'Confirmed',
+          caseSensitive: false,
+        ),
+        'مؤكد',
+      )
+          .replaceAll(
+        RegExp(
+          r'Cancelled|Canceled',
+          caseSensitive: false,
+        ),
+        'ملغي',
+      );
+
+      return text;
+    }
+
+    text = text
+        .replaceAll('تقرير طبي مرفوع', 'Uploaded medical report')
+        .replaceAll('تقرير طبي', 'Medical report')
+        .replaceAll('السجل الطبي', 'Medical record')
+        .replaceAll('سجل طبي', 'Medical record')
+        .replaceAll('تم الرفع', 'Uploaded')
+        .replaceAll('مرفوع', 'Uploaded')
+        .replaceAll('قيد الانتظار', 'Pending')
+        .replaceAll('مكتمل', 'Completed')
+        .replaceAll('مؤكد', 'Confirmed')
+        .replaceAll('ملغي', 'Cancelled')
+        .replaceAll('ملغى', 'Cancelled');
+
+    return text;
+  }
+
+  String _translateRecordTitle(String title) {
+    final cleanTitle = title.trim();
+
+    if (cleanTitle.isEmpty) {
+      return AppStrings.medicalRecord;
+    }
+
+    final lower = cleanTitle.toLowerCase();
+
+    final looksLikeFileName =
+        lower.endsWith('.pdf') ||
+            lower.endsWith('.jpg') ||
+            lower.endsWith('.jpeg') ||
+            lower.endsWith('.png') ||
+            lower.endsWith('.webp');
+
+    if (looksLikeFileName) {
+      return cleanTitle;
+    }
+
+    return _translateRecordText(cleanTitle);
+  }
+
   Widget _buildLoading() {
     return const Center(
       child: CircularProgressIndicator(color: primary),
@@ -265,10 +372,18 @@ class _ManageMedicalRecordsScreenState
             ),
           ],
         ),
-        body: _buildBody(
-          textDirection: textDirection,
-          textAlign: textAlign,
-          crossAxisAlignment: crossAxisAlignment,
+        body: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 520),
+            child: SizedBox(
+              width: double.infinity,
+              child: _buildBody(
+                textDirection: textDirection,
+                textAlign: textAlign,
+                crossAxisAlignment: crossAxisAlignment,
+              ),
+            ),
+          ),
         ),
       ),
     );
@@ -308,17 +423,25 @@ class _ManageMedicalRecordsScreenState
           final int recordId =
               int.tryParse(record['recordId']?.toString() ?? '0') ?? 0;
 
-          final String title = _textValue(
-            record,
-            'title',
-            fallback: AppStrings.medicalRecord,
+          final String title = _translateRecordTitle(
+            _textValue(
+              record,
+              'title',
+              fallback: AppStrings.medicalRecord,
+            ),
           );
 
-          final String description = _textValue(record, 'description');
+          final String description = _translateRecordText(
+            _textValue(record, 'description'),
+          );
+
           final String patientId = _textValue(record, 'patientId');
           final String doctorId = _textValue(record, 'doctorId');
           final String recordDate = _textValue(record, 'recordDate');
-          final String status = _textValue(record, 'status');
+
+          final String status = _translateRecordText(
+            _textValue(record, 'status'),
+          );
 
           return _MedicalRecordCard(
             key: ValueKey<int>(recordId),

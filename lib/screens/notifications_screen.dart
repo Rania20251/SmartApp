@@ -289,7 +289,17 @@ class _NotificationsScreenState extends State<NotificationsScreen>
             ),
           ],
         ),
-        body: buildBody(),
+        body: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(
+              maxWidth: 520,
+            ),
+            child: SizedBox(
+              width: double.infinity,
+              child: buildBody(),
+            ),
+          ),
+        ),
       ),
     );
   }

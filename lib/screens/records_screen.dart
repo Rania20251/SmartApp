@@ -391,40 +391,58 @@ class _RecordsScreenState extends State<RecordsScreen> {
           ),
         ],
       ),
-      body: Column(
-        children: [
-          uploadBox(),
-          Expanded(
-            child: FutureBuilder<List<dynamic>>(
-              future: recordsFuture,
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
-                }
+      body: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(
+            maxWidth: 520,
+          ),
+          child: SizedBox(
+            width: double.infinity,
+            child: Column(
+              children: [
+                uploadBox(),
+                Expanded(
+                  child: FutureBuilder<List<dynamic>>(
+                    future: recordsFuture,
+                    builder: (context, snapshot) {
+                      if (snapshot.connectionState ==
+                          ConnectionState.waiting) {
+                        return const Center(
+                          child: CircularProgressIndicator(),
+                        );
+                      }
 
-                if (snapshot.hasError) {
-                  return Center(
-                    child: Text(
-                      AppStrings.failedLoadMedicalRecords,
-                      style: const TextStyle(color: Colors.red),
-                    ),
-                  );
-                }
+                      if (snapshot.hasError) {
+                        return Center(
+                          child: Text(
+                            AppStrings.failedLoadMedicalRecords,
+                            style: const TextStyle(color: Colors.red),
+                          ),
+                        );
+                      }
 
-                final records = snapshot.data ?? [];
+                      final records = snapshot.data ?? [];
 
-                if (records.isEmpty) {
-                  return Center(child: Text(AppStrings.noMedicalRecordsFound));
-                }
+                      if (records.isEmpty) {
+                        return Center(
+                          child: Text(
+                            AppStrings.noMedicalRecordsFound,
+                          ),
+                        );
+                      }
 
-                return ListView.builder(
-                  itemCount: records.length,
-                  itemBuilder: (context, index) => recordCard(records[index]),
-                );
-              },
+                      return ListView.builder(
+                        itemCount: records.length,
+                        itemBuilder: (context, index) =>
+                            recordCard(records[index]),
+                      );
+                    },
+                  ),
+                ),
+              ],
             ),
           ),
-        ],
+        ),
       ),
     );
   }

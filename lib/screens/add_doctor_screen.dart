@@ -34,6 +34,156 @@ class _AddDoctorScreenState extends State<AddDoctorScreen> {
   String selectedImageName = '';
   String imageUrl = '';
 
+  String canonicalDoctorNameForStorage(String value) {
+    var clean = value
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+
+    clean = clean
+        .replaceFirst(RegExp(r'^Dr\.?\s*', caseSensitive: false), '')
+        .replaceFirst(RegExp(r'^Doctor\s+', caseSensitive: false), '')
+        .replaceFirst(RegExp(r'^د\.?\s*'), '')
+        .replaceFirst(RegExp(r'^دكتور\s+'), '')
+        .replaceFirst(RegExp(r'^الدكتور\s+'), '')
+        .trim();
+
+    if (clean.isEmpty) return '';
+
+    const arabicToEnglish = <String, String>{
+      'أحمد': 'Ahmad',
+      'احمد': 'Ahmad',
+      'علي': 'Ali',
+      'سارة': 'Sara',
+      'ساره': 'Sara',
+      'محمد': 'Mohammad',
+      'محمود': 'Mahmoud',
+      'عمر': 'Omar',
+      'نور': 'Nour',
+      'عدنان': 'Adnan',
+      'هبة': 'Hiba',
+      'هبه': 'Hiba',
+      'رنا': 'Rana',
+      'رانيا': 'Rania',
+      'صلاح': 'Salah',
+      'سالي': 'Sali',
+      'خالد': 'Khaled',
+      'يوسف': 'Yousef',
+      'مريم': 'Mariam',
+      'هناء': 'Hana',
+      'هالة': 'Hala',
+      'هاله': 'Hala',
+      'لينا': 'Lina',
+      'يارا': 'Yara',
+      'آية': 'Aya',
+      'ايه': 'Aya',
+      'منى': 'Mona',
+      'هدى': 'Huda',
+      'مراد': 'Murad',
+      'أسامة': 'Osama',
+      'اسامة': 'Osama',
+      'رامي': 'Rami',
+      'فادي': 'Fadi',
+      'زياد': 'Ziad',
+      'طارق': 'Tariq',
+      'إبراهيم': 'Ibrahim',
+      'ابراهيم': 'Ibrahim',
+      'مصطفى': 'Mustafa',
+      'معاذ': 'Moath',
+    };
+
+    final words = clean
+        .split(' ')
+        .where((word) => word.trim().isNotEmpty)
+        .map((word) {
+      final plain = word
+          .replaceAll('.', '')
+          .replaceAll(',', '')
+          .trim();
+
+      final known = arabicToEnglish[plain];
+      if (known != null) return known;
+
+      if (RegExp(r'[\u0600-\u06FF]').hasMatch(plain)) {
+        return transliterateArabicWord(plain);
+      }
+
+      if (plain.isEmpty) return '';
+
+      return plain.length == 1
+          ? plain.toUpperCase()
+          : '${plain[0].toUpperCase()}${plain.substring(1).toLowerCase()}';
+    })
+        .where((word) => word.isNotEmpty)
+        .toList();
+
+    return words.join(' ').trim();
+  }
+
+  String transliterateArabicWord(String word) {
+    const letters = <String, String>{
+      'ا': 'a',
+      'أ': 'a',
+      'إ': 'i',
+      'آ': 'aa',
+      'ء': '',
+      'ؤ': 'o',
+      'ئ': 'e',
+      'ب': 'b',
+      'ت': 't',
+      'ث': 'th',
+      'ج': 'j',
+      'ح': 'h',
+      'خ': 'kh',
+      'د': 'd',
+      'ذ': 'th',
+      'ر': 'r',
+      'ز': 'z',
+      'س': 's',
+      'ش': 'sh',
+      'ص': 's',
+      'ض': 'd',
+      'ط': 't',
+      'ظ': 'z',
+      'ع': 'a',
+      'غ': 'gh',
+      'ف': 'f',
+      'ق': 'q',
+      'ك': 'k',
+      'ل': 'l',
+      'م': 'm',
+      'ن': 'n',
+      'ه': 'h',
+      'ة': 'a',
+      'و': 'w',
+      'ى': 'a',
+      'ي': 'y',
+      'َ': 'a',
+      'ُ': 'u',
+      'ِ': 'i',
+      'ْ': '',
+      'ّ': '',
+      'ـ': '',
+    };
+
+    final buffer = StringBuffer();
+
+    for (final rune in word.runes) {
+      final char = String.fromCharCode(rune);
+      buffer.write(letters[char] ?? char);
+    }
+
+    final result = buffer
+        .toString()
+        .replaceAll(RegExp(r'[^a-zA-Z]'), '')
+        .trim();
+
+    if (result.isEmpty) return word;
+
+    return result.length == 1
+        ? result.toUpperCase()
+        : '${result[0].toUpperCase()}${result.substring(1).toLowerCase()}';
+  }
+
   @override
   void initState() {
     super.initState();
@@ -143,11 +293,12 @@ class _AddDoctorScreenState extends State<AddDoctorScreen> {
   Future<void> addDoctor() async {
     if (isLoading) return;
 
-    final name = nameController.text.trim();
+    final enteredName = nameController.text.trim();
+    final name = canonicalDoctorNameForStorage(enteredName);
     final phone = phoneController.text.trim();
     final email = emailController.text.trim();
 
-    if (name.isEmpty) {
+    if (enteredName.isEmpty || name.isEmpty) {
       showMessage(AppStrings.enterDoctorName);
       return;
     }
@@ -289,8 +440,9 @@ class _AddDoctorScreenState extends State<AddDoctorScreen> {
         continue;
       }
 
-      final shownName =
-      AppStrings.specialtyByLanguage(originalName);
+      final shownName = AppStrings.specialtyByLanguage(
+        originalName,
+      );
 
       items.add(
         DropdownMenuItem<int>(
@@ -395,6 +547,19 @@ class _AddDoctorScreenState extends State<AddDoctorScreen> {
                   decoration: inputDecoration(
                     hint: AppStrings.doctorFullName,
                     icon: Icons.person,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  AppStrings.isArabic
+                      ? 'يمكن كتابة الاسم بالعربي أو الإنجليزي، وسيظهر حسب لغة التطبيق.'
+                      : 'You can enter the name in Arabic or English; it will display in the app language.',
+                  textAlign: AppStrings.isArabic
+                      ? TextAlign.right
+                      : TextAlign.left,
+                  style: const TextStyle(
+                    color: Colors.grey,
+                    fontSize: 12,
                   ),
                 ),
                 const SizedBox(height: 16),

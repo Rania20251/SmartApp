@@ -327,281 +327,291 @@ class _DoctorDetailsScreenState extends State<DoctorDetailsScreen> {
             const SizedBox(width: 8),
           ],
         ),
-        body: ListView(
-          padding: const EdgeInsets.all(20),
-          children: [
-            Container(
-              padding: const EdgeInsets.all(18),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(26),
-              ),
-              child: Row(
-                textDirection: AppStrings.isArabic
-                    ? TextDirection.rtl
-                    : TextDirection.ltr,
-                crossAxisAlignment: CrossAxisAlignment.center,
+        body: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(
+              maxWidth: 520,
+            ),
+            child: SizedBox(
+              width: double.infinity,
+              child: ListView(
+                padding: const EdgeInsets.all(20),
                 children: [
-                  SizedBox(
-                    width: 96,
-                    height: 96,
-                    child: doctorImage(),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: AppStrings.isArabic
-                          ? CrossAxisAlignment.end
-                          : CrossAxisAlignment.start,
+                  Container(
+                    padding: const EdgeInsets.all(18),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(26),
+                    ),
+                    child: Row(
+                      textDirection: AppStrings.isArabic
+                          ? TextDirection.rtl
+                          : TextDirection.ltr,
+                      crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
                         SizedBox(
-                          width: double.infinity,
-                          child: Text(
-                            shownName,
-                            textDirection: AppStrings.isArabic
-                                ? TextDirection.rtl
-                                : TextDirection.ltr,
-                            textAlign: AppStrings.isArabic
-                                ? TextAlign.right
-                                : TextAlign.left,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              fontSize: 21,
-                              height: 1.15,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
+                          width: 96,
+                          height: 96,
+                          child: doctorImage(),
                         ),
-                        const SizedBox(height: 5),
-                        SizedBox(
-                          width: double.infinity,
-                          child: Text(
-                            shownSpecialty,
-                            textDirection: AppStrings.isArabic
-                                ? TextDirection.rtl
-                                : TextDirection.ltr,
-                            textAlign: AppStrings.isArabic
-                                ? TextAlign.right
-                                : TextAlign.left,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(color: Colors.grey),
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Align(
-                          alignment: AppStrings.isArabic
-                              ? Alignment.centerRight
-                              : Alignment.centerLeft,
-                          child: Directionality(
-                            textDirection: TextDirection.ltr,
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                const Icon(
-                                  Icons.star,
-                                  color: Colors.orange,
-                                  size: 18,
-                                ),
-                                Text(' ${widget.rating}'),
-                                const SizedBox(width: 6),
-                                Text(
-                                  AppStrings.isArabic
-                                      ? '(120 تقييم)'
-                                      : '(120 reviews)',
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: AppStrings.isArabic
+                                ? CrossAxisAlignment.end
+                                : CrossAxisAlignment.start,
+                            children: [
+                              SizedBox(
+                                width: double.infinity,
+                                child: Text(
+                                  shownName,
+                                  textDirection: AppStrings.isArabic
+                                      ? TextDirection.rtl
+                                      : TextDirection.ltr,
+                                  textAlign: AppStrings.isArabic
+                                      ? TextAlign.right
+                                      : TextAlign.left,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
                                   style: const TextStyle(
-                                    color: Colors.grey,
-                                    fontSize: 12,
+                                    fontSize: 21,
+                                    height: 1.15,
+                                    fontWeight: FontWeight.bold,
                                   ),
                                 ),
-                              ],
-                            ),
+                              ),
+                              const SizedBox(height: 5),
+                              SizedBox(
+                                width: double.infinity,
+                                child: Text(
+                                  shownSpecialty,
+                                  textDirection: AppStrings.isArabic
+                                      ? TextDirection.rtl
+                                      : TextDirection.ltr,
+                                  textAlign: AppStrings.isArabic
+                                      ? TextAlign.right
+                                      : TextAlign.left,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(color: Colors.grey),
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Align(
+                                alignment: AppStrings.isArabic
+                                    ? Alignment.centerRight
+                                    : Alignment.centerLeft,
+                                child: Directionality(
+                                  textDirection: TextDirection.ltr,
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      const Icon(
+                                        Icons.star,
+                                        color: Colors.orange,
+                                        size: 18,
+                                      ),
+                                      Text(' ${widget.rating}'),
+                                      const SizedBox(width: 6),
+                                      Text(
+                                        AppStrings.isArabic
+                                            ? '(120 تقييم)'
+                                            : '(120 reviews)',
+                                        style: const TextStyle(
+                                          color: Colors.grey,
+                                          fontSize: 12,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                       ],
+                    ),
+                  ),
+                  if (isBooked) ...[
+                    const SizedBox(height: 18),
+                    Container(
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: primary.withOpacity(.10),
+                        borderRadius: BorderRadius.circular(18),
+                      ),
+                      child: Row(
+                        textDirection: AppStrings.isArabic
+                            ? TextDirection.rtl
+                            : TextDirection.ltr,
+                        children: [
+                          const Icon(Icons.check_circle, color: primary),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              AppStrings.isArabic
+                                  ? 'تم حجز الموعد وسيظهر في قائمة مواعيدي'
+                                  : 'Appointment booked and will appear in My Appointments',
+                              style: const TextStyle(
+                                color: primary,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 24),
+                  Text(
+                    AppStrings.isArabic ? 'عن الطبيب' : 'About Doctor',
+                    style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    aboutText,
+                    style: const TextStyle(
+                      color: Colors.grey,
+                      height: 1.6,
+                      fontSize: 14,
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  Text(
+                    AppStrings.isArabic ? 'الأوقات المتاحة' : 'Available Times',
+                    style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 14),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: List.generate(dates.length, (index) {
+                      final selected = selectedDay == index;
+                      final date = dates[index];
+
+                      return InkWell(
+                        borderRadius: BorderRadius.circular(18),
+                        onTap: () {
+                          if (selectedDay == index && !isBooked) return;
+
+                          setState(() {
+                            selectedDay = index;
+                            isBooked = false;
+                          });
+                        },
+                        child: Container(
+                          width: 58,
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          decoration: BoxDecoration(
+                            color: selected ? primary : Colors.white,
+                            borderRadius: BorderRadius.circular(18),
+                          ),
+                          child: Column(
+                            children: [
+                              Text(
+                                dayName(date),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  color: selected ? Colors.white : Colors.grey,
+                                  fontSize: 11,
+                                ),
+                              ),
+                              const SizedBox(height: 6),
+                              Text(
+                                date.day.toString().padLeft(2, '0'),
+                                style: TextStyle(
+                                  color: selected ? Colors.white : Colors.black,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    }),
+                  ),
+                  const SizedBox(height: 18),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: List.generate(times.length, (index) {
+                      final selected = selectedTime == index;
+
+                      return InkWell(
+                        borderRadius: BorderRadius.circular(14),
+                        onTap: () {
+                          if (selectedTime == index && !isBooked) return;
+
+                          setState(() {
+                            selectedTime = index;
+                            isBooked = false;
+                          });
+                        },
+                        child: Container(
+                          width: 100,
+                          height: 44,
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            color: selected ? primary : Colors.white,
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          child: Text(
+                            times[index],
+                            style: TextStyle(
+                              color: selected ? Colors.white : Colors.black,
+                              fontWeight:
+                              selected ? FontWeight.bold : FontWeight.normal,
+                              fontSize: 13,
+                            ),
+                          ),
+                        ),
+                      );
+                    }),
+                  ),
+                  const SizedBox(height: 34),
+                  SizedBox(
+                    height: 54,
+                    child: ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: isBooked ? Colors.green : primary,
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                      ),
+                      icon: isBooking
+                          ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                          : Icon(
+                        isBooked
+                            ? Icons.check_circle
+                            : Icons.calendar_month,
+                      ),
+                      label: Text(
+                        isBooking
+                            ? (AppStrings.isArabic
+                            ? 'جاري الحجز...'
+                            : 'Booking...')
+                            : isBooked
+                            ? (AppStrings.isArabic
+                            ? 'تم الحجز'
+                            : 'Booked')
+                            : AppStrings.bookAppointment,
+                        style: const TextStyle(fontSize: 17),
+                      ),
+                      onPressed: isBooking ? null : bookAppointment,
                     ),
                   ),
                 ],
               ),
             ),
-            if (isBooked) ...[
-              const SizedBox(height: 18),
-              Container(
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: primary.withOpacity(.10),
-                  borderRadius: BorderRadius.circular(18),
-                ),
-                child: Row(
-                  textDirection: AppStrings.isArabic
-                      ? TextDirection.rtl
-                      : TextDirection.ltr,
-                  children: [
-                    const Icon(Icons.check_circle, color: primary),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Text(
-                        AppStrings.isArabic
-                            ? 'تم حجز الموعد وسيظهر في قائمة مواعيدي'
-                            : 'Appointment booked and will appear in My Appointments',
-                        style: const TextStyle(
-                          color: primary,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-            const SizedBox(height: 24),
-            Text(
-              AppStrings.isArabic ? 'عن الطبيب' : 'About Doctor',
-              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 10),
-            Text(
-              aboutText,
-              style: const TextStyle(
-                color: Colors.grey,
-                height: 1.6,
-                fontSize: 14,
-              ),
-            ),
-            const SizedBox(height: 24),
-            Text(
-              AppStrings.isArabic ? 'الأوقات المتاحة' : 'Available Times',
-              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 14),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: List.generate(dates.length, (index) {
-                final selected = selectedDay == index;
-                final date = dates[index];
-
-                return InkWell(
-                  borderRadius: BorderRadius.circular(18),
-                  onTap: () {
-                    if (selectedDay == index && !isBooked) return;
-
-                    setState(() {
-                      selectedDay = index;
-                      isBooked = false;
-                    });
-                  },
-                  child: Container(
-                    width: 58,
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    decoration: BoxDecoration(
-                      color: selected ? primary : Colors.white,
-                      borderRadius: BorderRadius.circular(18),
-                    ),
-                    child: Column(
-                      children: [
-                        Text(
-                          dayName(date),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            color: selected ? Colors.white : Colors.grey,
-                            fontSize: 11,
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        Text(
-                          date.day.toString().padLeft(2, '0'),
-                          style: TextStyle(
-                            color: selected ? Colors.white : Colors.black,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                );
-              }),
-            ),
-            const SizedBox(height: 18),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: List.generate(times.length, (index) {
-                final selected = selectedTime == index;
-
-                return InkWell(
-                  borderRadius: BorderRadius.circular(14),
-                  onTap: () {
-                    if (selectedTime == index && !isBooked) return;
-
-                    setState(() {
-                      selectedTime = index;
-                      isBooked = false;
-                    });
-                  },
-                  child: Container(
-                    width: 100,
-                    height: 44,
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      color: selected ? primary : Colors.white,
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                    child: Text(
-                      times[index],
-                      style: TextStyle(
-                        color: selected ? Colors.white : Colors.black,
-                        fontWeight:
-                        selected ? FontWeight.bold : FontWeight.normal,
-                        fontSize: 13,
-                      ),
-                    ),
-                  ),
-                );
-              }),
-            ),
-            const SizedBox(height: 34),
-            SizedBox(
-              height: 54,
-              child: ElevatedButton.icon(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: isBooked ? Colors.green : primary,
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                ),
-                icon: isBooking
-                    ? const SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: Colors.white,
-                  ),
-                )
-                    : Icon(
-                  isBooked
-                      ? Icons.check_circle
-                      : Icons.calendar_month,
-                ),
-                label: Text(
-                  isBooking
-                      ? (AppStrings.isArabic
-                      ? 'جاري الحجز...'
-                      : 'Booking...')
-                      : isBooked
-                      ? (AppStrings.isArabic
-                      ? 'تم الحجز'
-                      : 'Booked')
-                      : AppStrings.bookAppointment,
-                  style: const TextStyle(fontSize: 17),
-                ),
-                onPressed: isBooking ? null : bookAppointment,
-              ),
-            ),
-          ],
+          ),
         ),
       ),
     );

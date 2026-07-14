@@ -286,6 +286,50 @@ class AppStrings {
         'aya': 'آية',
         'amal': 'أمل',
         'huda': 'هدى',
+        'hiba': 'هبة',
+        'heba': 'هبة',
+        'hibaah': 'هبة',
+        'habiba': 'حبيبة',
+        'noha': 'نهى',
+        'nuha': 'نهى',
+        'dina': 'دينا',
+        'diana': 'ديانا',
+        'mai': 'مي',
+        'may': 'مي',
+        'marwa': 'مروة',
+        'marwah': 'مروة',
+        'rawan': 'روان',
+        'shaimaa': 'شيماء',
+        'shaima': 'شيماء',
+        'esraa': 'إسراء',
+        'israa': 'إسراء',
+        'farah': 'فرح',
+        'tasneem': 'تسنيم',
+        'batool': 'بتول',
+        'manar': 'منار',
+        'rasha': 'رشا',
+        'sahar': 'سحر',
+        'wafa': 'وفاء',
+        'alaa': 'آلاء',
+        'kholoud': 'خلود',
+        'khuloud': 'خلود',
+        'abdullah': 'عبدالله',
+        'abdallah': 'عبدالله',
+        'abdelrahman': 'عبدالرحمن',
+        'abdulrahman': 'عبدالرحمن',
+        'ibrahim': 'إبراهيم',
+        'mustafa': 'مصطفى',
+        'mostafa': 'مصطفى',
+        'tariq': 'طارق',
+        'tareq': 'طارق',
+        'fadi': 'فادي',
+        'rami': 'رامي',
+        'zyad': 'زياد',
+        'ziad': 'زياد',
+        'bashar': 'بشار',
+        'laith': 'ليث',
+        'moath': 'معاذ',
+        'muath': 'معاذ',
       };
 
       final words = clean
@@ -340,12 +384,67 @@ class AppStrings {
       'أمل': 'Amal',
       'امل': 'Amal',
       'هدى': 'Huda',
+      'هبة': 'Hiba',
+      'هبه': 'Hiba',
+      'حبيبة': 'Habiba',
+      'حبيبه': 'Habiba',
+      'نهى': 'Noha',
+      'نهي': 'Noha',
+      'دينا': 'Dina',
+      'ديانا': 'Diana',
+      'مي': 'Mai',
+      'مروة': 'Marwa',
+      'مروه': 'Marwa',
+      'روان': 'Rawan',
+      'شيماء': 'Shaimaa',
+      'إسراء': 'Esraa',
+      'اسراء': 'Esraa',
+      'فرح': 'Farah',
+      'تسنيم': 'Tasneem',
+      'بتول': 'Batool',
+      'منار': 'Manar',
+      'رشا': 'Rasha',
+      'سحر': 'Sahar',
+      'وفاء': 'Wafa',
+      'آلاء': 'Alaa',
+      'الاء': 'Alaa',
+      'خلود': 'Kholoud',
+      'عبدالله': 'Abdullah',
+      'عبد الله': 'Abdullah',
+      'عبدالرحمن': 'Abdelrahman',
+      'عبد الرحمن': 'Abdelrahman',
+      'إبراهيم': 'Ibrahim',
+      'ابراهيم': 'Ibrahim',
+      'مصطفى': 'Mustafa',
+      'طارق': 'Tariq',
+      'فادي': 'Fadi',
+      'رامي': 'Rami',
+      'زياد': 'Ziad',
+      'بشار': 'Bashar',
+      'ليث': 'Laith',
+      'معاذ': 'Moath',
     };
 
     final words = clean
         .split(RegExp(r'\s+'))
         .where((word) => word.trim().isNotEmpty)
-        .map((word) => knownNames[word.trim()] ?? word.trim())
+        .map((word) {
+      final cleanWord = word
+          .replaceAll('.', '')
+          .replaceAll(',', '')
+          .trim();
+
+      if (cleanWord.isEmpty) return '';
+
+      final known = knownNames[cleanWord];
+      if (known != null) return known;
+
+      if (RegExp(r'[\u0600-\u06FF]').hasMatch(cleanWord)) {
+        return _transliterateArabicWord(cleanWord);
+      }
+
+      return cleanWord;
+    })
         .where((word) => word.isNotEmpty)
         .toList();
 
@@ -421,6 +520,98 @@ class AppStrings {
     }
 
     return buffer.toString();
+  }
+
+  static String _transliterateArabicWord(String word) {
+    var value = word.trim();
+
+    if (value.isEmpty) return value;
+
+    const combinations = <String, String>{
+      'ال': 'Al',
+      'عبد': 'Abd',
+      'الله': 'Allah',
+      'رحمن': 'Rahman',
+    };
+
+    combinations.forEach((key, replacement) {
+      if (value.contains(key)) {
+        value = value.replaceAll(key, replacement);
+      }
+    });
+
+    const letters = <String, String>{
+      'ا': 'a',
+      'أ': 'a',
+      'إ': 'i',
+      'آ': 'aa',
+      'ء': '',
+      'ؤ': 'o',
+      'ئ': 'e',
+      'ب': 'b',
+      'ت': 't',
+      'ث': 'th',
+      'ج': 'j',
+      'ح': 'h',
+      'خ': 'kh',
+      'د': 'd',
+      'ذ': 'th',
+      'ر': 'r',
+      'ز': 'z',
+      'س': 's',
+      'ش': 'sh',
+      'ص': 's',
+      'ض': 'd',
+      'ط': 't',
+      'ظ': 'z',
+      'ع': 'a',
+      'غ': 'gh',
+      'ف': 'f',
+      'ق': 'q',
+      'ك': 'k',
+      'ل': 'l',
+      'م': 'm',
+      'ن': 'n',
+      'ه': 'h',
+      'ة': 'a',
+      'و': 'w',
+      'ى': 'a',
+      'ي': 'y',
+      'َ': 'a',
+      'ُ': 'u',
+      'ِ': 'i',
+      'ْ': '',
+      'ّ': '',
+      'ً': 'an',
+      'ٌ': 'un',
+      'ٍ': 'in',
+      'ـ': '',
+    };
+
+    final buffer = StringBuffer();
+
+    for (final rune in value.runes) {
+      final character = String.fromCharCode(rune);
+      buffer.write(letters[character] ?? character);
+    }
+
+    var result = buffer
+        .toString()
+        .replaceAll(RegExp(r'[^a-zA-Z\\s]'), '')
+        .replaceAll(RegExp(r'\\s+'), ' ')
+        .trim();
+
+    if (result.isEmpty) return word;
+
+    return result
+        .split(' ')
+        .where((part) => part.isNotEmpty)
+        .map((part) {
+      if (part.length == 1) return part.toUpperCase();
+
+      return '${part[0].toUpperCase()}${part.substring(1).toLowerCase()}';
+    })
+        .join(' ');
   }
 
   static String specialtyByLanguage(String specialty) {
@@ -700,6 +891,60 @@ class AppStrings {
         value.contains('تأهيل') ||
         value.contains('تاهيل')) {
       return 'Physiotherapy and Rehabilitation';
+    }
+
+    if (value.contains('emergency') ||
+        value.contains('er medicine') ||
+        value.contains('urgent care')) {
+      return 'Emergency Medicine';
+    }
+
+    if (value.contains('cardiology') ||
+        value.contains('cardiac') ||
+        value.contains('heart')) {
+      return 'Cardiology';
+    }
+
+    if (value.contains('dentistry') ||
+        value.contains('dental') ||
+        value.contains('dentist') ||
+        value.contains('teeth')) {
+      return 'Dentistry';
+    }
+
+    if (value.contains('neurology') ||
+        value.contains('neurologist') ||
+        value.contains('neuro') ||
+        value.contains('nerve')) {
+      return 'Neurology';
+    }
+
+    if (value.contains('pediatrics') ||
+        value.contains('pediatric') ||
+        value.contains('child') ||
+        value.contains('children')) {
+      return 'Pediatrics';
+    }
+
+    if (value.contains('dermatology') ||
+        value.contains('dermatologist') ||
+        value.contains('derma') ||
+        value.contains('skin')) {
+      return 'Dermatology';
+    }
+
+    if (value.contains('ophthalmology') ||
+        value.contains('ophthalmologist') ||
+        value == 'eye' ||
+        value == 'eyes' ||
+        value.contains('vision')) {
+      return 'Ophthalmology';
+    }
+
+    if (value.contains('orthopedics') ||
+        value.contains('orthopedic') ||
+        value.contains('bone')) {
+      return 'Orthopedics';
     }
 
     return clean;

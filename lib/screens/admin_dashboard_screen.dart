@@ -258,115 +258,123 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
             const SizedBox(width: 8),
           ],
         ),
-        body: ListView(
-          padding: const EdgeInsets.all(18),
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  child: TopCard(
-                    title: AppStrings.totalPatients,
-                    value: dashboardCounts[0]?.toString() ?? '—',
+        body: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 520),
+            child: SizedBox(
+              width: double.infinity,
+              child: ListView(
+                padding: const EdgeInsets.all(18),
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TopCard(
+                          title: AppStrings.totalPatients,
+                          value: dashboardCounts[0]?.toString() ?? '—',
+                          icon: Icons.people,
+                          color: primary,
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: TopCard(
+                          title: AppStrings.totalDoctors,
+                          value: dashboardCounts[1]?.toString() ?? '—',
+                          icon: Icons.local_hospital,
+                          color: Colors.green,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TopCard(
+                          title: AppStrings.appointments,
+                          value: dashboardCounts[2]?.toString() ?? '—',
+                          icon: Icons.calendar_month,
+                          color: Colors.red,
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: TopCard(
+                          title: AppStrings.pending,
+                          value: dashboardCounts[3]?.toString() ?? '—',
+                          icon: Icons.access_time,
+                          color: Colors.orange,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 22),
+                  const RepaintBoundary(
+                    child: ChartCard(),
+                  ),
+                  const SizedBox(height: 18),
+                  RepaintBoundary(
+                    child: LatestPatientsCard(
+                      future: recentPatientsFuture,
+                      cachedPatients: cachedRecentPatients,
+                    ),
+                  ),
+                  const SizedBox(height: 22),
+                  Text(
+                    AppStrings.management,
+                    style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 12),
+                  ManageTile(
                     icon: Icons.people,
+                    title: AppStrings.manageUsers,
+                    subtitle: AppStrings.manageUsersSubtitle,
                     color: primary,
+                    onTap: () {
+                      openAndRefresh(const ManageUsersScreen());
+                    },
                   ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: TopCard(
-                    title: AppStrings.totalDoctors,
-                    value: dashboardCounts[1]?.toString() ?? '—',
+                  ManageTile(
                     icon: Icons.local_hospital,
-                    color: Colors.green,
+                    title: AppStrings.manageDoctors,
+                    subtitle: AppStrings.manageDoctorsSubtitle,
+                    color: primary,
+                    onTap: () {
+                      openAndRefresh(const ManageDoctorsScreen());
+                    },
                   ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 10),
-            Row(
-              children: [
-                Expanded(
-                  child: TopCard(
-                    title: AppStrings.appointments,
-                    value: dashboardCounts[2]?.toString() ?? '—',
-                    icon: Icons.calendar_month,
+                  ManageTile(
+                    icon: Icons.category,
+                    title: AppStrings.manageSpecialties,
+                    subtitle: AppStrings.manageSpecialtiesSubtitle,
+                    color: Colors.purple,
+                    onTap: () {
+                      openAndRefresh(const ManageSpecialtiesScreen());
+                    },
+                  ),
+                  ManageTile(
+                    icon: Icons.event_note,
+                    title: AppStrings.manageAppointments,
+                    subtitle: AppStrings.manageAppointmentsSubtitle,
                     color: Colors.red,
+                    onTap: () {
+                      openAndRefresh(const ManageAppointmentsScreen());
+                    },
                   ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: TopCard(
-                    title: AppStrings.pending,
-                    value: dashboardCounts[3]?.toString() ?? '—',
-                    icon: Icons.access_time,
+                  ManageTile(
+                    icon: Icons.description,
+                    title: AppStrings.manageMedicalRecords,
+                    subtitle: AppStrings.manageMedicalRecordsSubtitle,
                     color: Colors.orange,
+                    onTap: () {
+                      openAndRefresh(const ManageMedicalRecordsScreen());
+                    },
                   ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 22),
-            const RepaintBoundary(
-              child: ChartCard(),
-            ),
-            const SizedBox(height: 18),
-            RepaintBoundary(
-              child: LatestPatientsCard(
-                future: recentPatientsFuture,
-                cachedPatients: cachedRecentPatients,
+                ],
               ),
             ),
-            const SizedBox(height: 22),
-            Text(
-              AppStrings.management,
-              style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 12),
-            ManageTile(
-              icon: Icons.people,
-              title: AppStrings.manageUsers,
-              subtitle: AppStrings.manageUsersSubtitle,
-              color: primary,
-              onTap: () {
-                openAndRefresh(const ManageUsersScreen());
-              },
-            ),
-            ManageTile(
-              icon: Icons.local_hospital,
-              title: AppStrings.manageDoctors,
-              subtitle: AppStrings.manageDoctorsSubtitle,
-              color: primary,
-              onTap: () {
-                openAndRefresh(const ManageDoctorsScreen());
-              },
-            ),
-            ManageTile(
-              icon: Icons.category,
-              title: AppStrings.manageSpecialties,
-              subtitle: AppStrings.manageSpecialtiesSubtitle,
-              color: Colors.purple,
-              onTap: () {
-                openAndRefresh(const ManageSpecialtiesScreen());
-              },
-            ),
-            ManageTile(
-              icon: Icons.event_note,
-              title: AppStrings.manageAppointments,
-              subtitle: AppStrings.manageAppointmentsSubtitle,
-              color: Colors.red,
-              onTap: () {
-                openAndRefresh(const ManageAppointmentsScreen());
-              },
-            ),
-            ManageTile(
-              icon: Icons.description,
-              title: AppStrings.manageMedicalRecords,
-              subtitle: AppStrings.manageMedicalRecordsSubtitle,
-              color: Colors.orange,
-              onTap: () {
-                openAndRefresh(const ManageMedicalRecordsScreen());
-              },
-            ),
-          ],
+          ),
         ),
       ),
     );

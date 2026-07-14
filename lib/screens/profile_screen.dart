@@ -368,187 +368,194 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ],
         ),
         body: Center(
-          child: Container(
-            width: 390,
-            padding: const EdgeInsets.all(20),
-            child: ListView(
-              children: [
-                const SizedBox(height: 20),
-                Center(
-                  child: Stack(
-                    children: [
-                      CircleAvatar(
-                        radius: 60,
-                        backgroundColor: const Color(0xffEDE7FF),
-                        backgroundImage: getProfileImage(),
-                      ),
-                      Positioned(
-                        right: 0,
-                        bottom: 0,
-                        child: InkWell(
-                          onTap: _openEditProfile,
-                          child: Container(
-                            padding: const EdgeInsets.all(8),
-                            decoration: const BoxDecoration(
-                              color: primary,
-                              shape: BoxShape.circle,
-                            ),
-                            child: const Icon(
-                              Icons.camera_alt,
-                              color: Colors.white,
-                              size: 22,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(
+              maxWidth: 520,
+            ),
+            child: SizedBox(
+              width: double.infinity,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 18),
+                child: ListView(
+                  children: [
+                    const SizedBox(height: 20),
+                    Center(
+                      child: Stack(
+                        children: [
+                          CircleAvatar(
+                            radius: 60,
+                            backgroundColor: const Color(0xffEDE7FF),
+                            backgroundImage: getProfileImage(),
+                          ),
+                          Positioned(
+                            right: 0,
+                            bottom: 0,
+                            child: InkWell(
+                              onTap: _openEditProfile,
+                              child: Container(
+                                padding: const EdgeInsets.all(8),
+                                decoration: const BoxDecoration(
+                                  color: primary,
+                                  shape: BoxShape.circle,
+                                ),
+                                child: const Icon(
+                                  Icons.camera_alt,
+                                  color: Colors.white,
+                                  size: 22,
+                                ),
+                              ),
                             ),
                           ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Center(
+                      child: Text(
+                        fullName,
+                        textAlign: TextAlign.center,
+                        textDirection: AppStrings.isArabic
+                            ? TextDirection.rtl
+                            : TextDirection.ltr,
+                        style: const TextStyle(
+                          fontSize: 24,
+                          fontWeight: FontWeight.bold,
                         ),
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Center(
+                      child: Text(
+                        email,
+                        textDirection: TextDirection.ltr,
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(color: Colors.grey),
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Center(
+                      child: Text(
+                        '${AppStrings.role}: '
+                            '${translateRole(UserSession.role ?? 'Patient')}',
+                        style: TextStyle(
+                          color: UserSession.isAdmin ? primary : Colors.grey,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Center(
+                      child: Text(
+                        '${AppStrings.userId}: ${UserSession.userId ?? '-'}',
+                        style: const TextStyle(
+                          color: Colors.red,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 30),
+                    ProfileItem(
+                      icon: Icons.calendar_month,
+                      title: AppStrings.myAppointments,
+                      value: appointmentValue,
+                    ),
+                    ProfileItem(
+                      icon: Icons.medical_services,
+                      title: AppStrings.medicalRecords,
+                      value: AppStrings.fromDatabase,
+                    ),
+                    ProfileItem(
+                      icon: Icons.phone,
+                      title: AppStrings.phoneNumber,
+                      value: phone,
+                    ),
+                    ProfileItem(
+                      icon: Icons.location_on,
+                      title: AppStrings.address,
+                      value: address,
+                    ),
+                    ProfileItem(
+                      icon: Icons.person,
+                      title: AppStrings.gender,
+                      value: gender,
+                    ),
+                    ProfileItem(
+                      icon: Icons.language,
+                      title: AppStrings.language,
+                      value: AppStrings.isArabic
+                          ? AppStrings.arabic
+                          : AppStrings.english,
+                    ),
+                    const SizedBox(height: 12),
+                    _actionButton(
+                      icon: Icons.language,
+                      title: AppStrings.changeLanguageText,
+                      foregroundColor: primary,
+                      backgroundColor: Colors.white,
+                      onPressed: () {
+                        changeLanguage(
+                          AppStrings.isArabic
+                              ? const Locale('en')
+                              : const Locale('ar'),
+                        );
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                    _actionButton(
+                      icon: Icons.edit,
+                      title: AppStrings.editProfile,
+                      foregroundColor: primary,
+                      backgroundColor: Colors.white,
+                      onPressed: _openEditProfile,
+                    ),
+                    const SizedBox(height: 12),
+                    _actionButton(
+                      icon: Icons.lock,
+                      title: AppStrings.changePassword,
+                      foregroundColor: primary,
+                      backgroundColor: Colors.white,
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const ChangePasswordScreen(),
+                          ),
+                        );
+                      },
+                    ),
+                    if (UserSession.isAdmin) ...[
+                      const SizedBox(height: 12),
+                      _actionButton(
+                        icon: Icons.admin_panel_settings,
+                        title: AppStrings.adminDashboard,
+                        foregroundColor: primary,
+                        backgroundColor: Colors.white,
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const AdminDashboardScreen(),
+                            ),
+                          );
+                        },
                       ),
                     ],
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Center(
-                  child: Text(
-                    fullName,
-                    textAlign: TextAlign.center,
-                    textDirection: AppStrings.isArabic
-                        ? TextDirection.rtl
-                        : TextDirection.ltr,
-                    style: const TextStyle(
-                      fontSize: 24,
-                      fontWeight: FontWeight.bold,
+                    const SizedBox(height: 12),
+                    _actionButton(
+                      icon: Icons.logout,
+                      title: isLoggingOut
+                          ? (AppStrings.isArabic
+                          ? 'جاري تسجيل الخروج...'
+                          : 'Logging out...')
+                          : AppStrings.logout,
+                      foregroundColor: Colors.white,
+                      backgroundColor: primary,
+                      onPressed: isLoggingOut ? null : _logout,
+                      loading: isLoggingOut,
                     ),
-                  ),
+                  ],
                 ),
-                const SizedBox(height: 6),
-                Center(
-                  child: Text(
-                    email,
-                    textDirection: TextDirection.ltr,
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(color: Colors.grey),
-                  ),
-                ),
-                const SizedBox(height: 6),
-                Center(
-                  child: Text(
-                    '${AppStrings.role}: '
-                        '${translateRole(UserSession.role ?? 'Patient')}',
-                    style: TextStyle(
-                      color: UserSession.isAdmin ? primary : Colors.grey,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 6),
-                Center(
-                  child: Text(
-                    '${AppStrings.userId}: ${UserSession.userId ?? '-'}',
-                    style: const TextStyle(
-                      color: Colors.red,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 30),
-                ProfileItem(
-                  icon: Icons.calendar_month,
-                  title: AppStrings.myAppointments,
-                  value: appointmentValue,
-                ),
-                ProfileItem(
-                  icon: Icons.medical_services,
-                  title: AppStrings.medicalRecords,
-                  value: AppStrings.fromDatabase,
-                ),
-                ProfileItem(
-                  icon: Icons.phone,
-                  title: AppStrings.phoneNumber,
-                  value: phone,
-                ),
-                ProfileItem(
-                  icon: Icons.location_on,
-                  title: AppStrings.address,
-                  value: address,
-                ),
-                ProfileItem(
-                  icon: Icons.person,
-                  title: AppStrings.gender,
-                  value: gender,
-                ),
-                ProfileItem(
-                  icon: Icons.language,
-                  title: AppStrings.language,
-                  value: AppStrings.isArabic
-                      ? AppStrings.arabic
-                      : AppStrings.english,
-                ),
-                const SizedBox(height: 12),
-                _actionButton(
-                  icon: Icons.language,
-                  title: AppStrings.changeLanguageText,
-                  foregroundColor: primary,
-                  backgroundColor: Colors.white,
-                  onPressed: () {
-                    changeLanguage(
-                      AppStrings.isArabic
-                          ? const Locale('en')
-                          : const Locale('ar'),
-                    );
-                  },
-                ),
-                const SizedBox(height: 12),
-                _actionButton(
-                  icon: Icons.edit,
-                  title: AppStrings.editProfile,
-                  foregroundColor: primary,
-                  backgroundColor: Colors.white,
-                  onPressed: _openEditProfile,
-                ),
-                const SizedBox(height: 12),
-                _actionButton(
-                  icon: Icons.lock,
-                  title: AppStrings.changePassword,
-                  foregroundColor: primary,
-                  backgroundColor: Colors.white,
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => const ChangePasswordScreen(),
-                      ),
-                    );
-                  },
-                ),
-                if (UserSession.isAdmin) ...[
-                  const SizedBox(height: 12),
-                  _actionButton(
-                    icon: Icons.admin_panel_settings,
-                    title: AppStrings.adminDashboard,
-                    foregroundColor: primary,
-                    backgroundColor: Colors.white,
-                    onPressed: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => const AdminDashboardScreen(),
-                        ),
-                      );
-                    },
-                  ),
-                ],
-                const SizedBox(height: 12),
-                _actionButton(
-                  icon: Icons.logout,
-                  title: isLoggingOut
-                      ? (AppStrings.isArabic
-                      ? 'جاري تسجيل الخروج...'
-                      : 'Logging out...')
-                      : AppStrings.logout,
-                  foregroundColor: Colors.white,
-                  backgroundColor: primary,
-                  onPressed: isLoggingOut ? null : _logout,
-                  loading: isLoggingOut,
-                ),
-              ],
+              ),
             ),
           ),
         ),
@@ -564,9 +571,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
     required VoidCallback? onPressed,
     bool loading = false,
   }) {
+    final TextDirection textDirection =
+    AppStrings.isArabic ? TextDirection.rtl : TextDirection.ltr;
+
     return SizedBox(
+      width: double.infinity,
       height: 52,
-      child: ElevatedButton.icon(
+      child: ElevatedButton(
         style: ElevatedButton.styleFrom(
           backgroundColor: backgroundColor,
           foregroundColor: foregroundColor,
@@ -575,23 +586,40 @@ class _ProfileScreenState extends State<ProfileScreen> {
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
           ),
-        ),
-        icon: loading
-            ? SizedBox(
-          width: 19,
-          height: 19,
-          child: CircularProgressIndicator(
-            strokeWidth: 2,
-            color: foregroundColor,
-          ),
-        )
-            : Icon(icon),
-        label: Text(
-          title,
-          textDirection:
-          AppStrings.isArabic ? TextDirection.rtl : TextDirection.ltr,
+          padding: const EdgeInsets.symmetric(horizontal: 18),
         ),
         onPressed: onPressed,
+        child: Directionality(
+          textDirection: textDirection,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            mainAxisSize: MainAxisSize.min,
+            textDirection: textDirection,
+            children: [
+              if (loading)
+                SizedBox(
+                  width: 19,
+                  height: 19,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: foregroundColor,
+                  ),
+                )
+              else
+                Icon(icon),
+              const SizedBox(width: 9),
+              Flexible(
+                child: Text(
+                  title,
+                  textDirection: textDirection,
+                  textAlign: TextAlign.center,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

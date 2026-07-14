@@ -33,27 +33,72 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   void initState() {
     super.initState();
 
-    nameController = TextEditingController(text: UserSession.fullName ?? '');
-    emailController = TextEditingController(text: UserSession.email ?? '');
-    phoneController = TextEditingController(text: UserSession.phoneNumber ?? '');
-    addressController = TextEditingController(text: UserSession.address ?? '');
-    genderController = TextEditingController(text: UserSession.gender ?? '');
-    birthController = TextEditingController(text: UserSession.dateOfBirth ?? '');
+    nameController = TextEditingController(
+      text: UserSession.fullName ?? '',
+    );
+
+    emailController = TextEditingController(
+      text: UserSession.email ?? '',
+    );
+
+    phoneController = TextEditingController(
+      text: UserSession.phoneNumber ?? '',
+    );
+
+    addressController = TextEditingController(
+      text: UserSession.address ?? '',
+    );
+
+    genderController = TextEditingController(
+      text: normalizeGenderForStorage(
+        UserSession.gender ?? '',
+      ),
+    );
+
+    birthController = TextEditingController(
+      text: UserSession.dateOfBirth ?? '',
+    );
 
     profileImage = UserSession.profileImage ?? '';
   }
 
-  ImageProvider? getProfileImage() {
+  String normalizeGenderForStorage(String value) {
+    final gender = value.trim().toLowerCase();
+
+    if (gender == 'male' ||
+        gender == 'm' ||
+        gender == 'ذكر') {
+      return 'Male';
+    }
+
+    if (gender == 'female' ||
+        gender == 'f' ||
+        gender == 'أنثى' ||
+        gender == 'انثى') {
+      return 'Female';
+    }
+
+    return '';
+  }
+
+  ImageProvider getProfileImage() {
     if (selectedImageBytes != null) {
       return MemoryImage(selectedImageBytes!);
     }
 
-    if (profileImage.startsWith('data:image')) {
-      final base64Part = profileImage.split(',').last;
-      return MemoryImage(base64Decode(base64Part));
+    try {
+      if (profileImage.startsWith('data:image')) {
+        final base64Part = profileImage.split(',').last;
+        return MemoryImage(base64Decode(base64Part));
+      }
+    } catch (_) {
+      return const AssetImage(
+        'assets/images/profile.jpg',
+      );
     }
 
-    if (profileImage.startsWith('http')) {
+    if (profileImage.startsWith('http://') ||
+        profileImage.startsWith('https://')) {
       return NetworkImage(profileImage);
     }
 
@@ -61,35 +106,43 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       return AssetImage(profileImage);
     }
 
-    return const AssetImage('assets/images/profile.jpg');
+    return const AssetImage(
+      'assets/images/profile.jpg',
+    );
   }
 
   Future<void> pickProfileImage() async {
+    if (isLoading) return;
+
     final XFile? picked = await picker.pickImage(
       source: ImageSource.gallery,
       imageQuality: 75,
+      maxWidth: 1200,
     );
 
     if (picked == null) return;
 
     final bytes = await picked.readAsBytes();
+
+    if (bytes.isEmpty) return;
+
     final base64Image = base64Encode(bytes);
 
     setState(() {
       selectedImageBytes = bytes;
-      profileImage = 'data:image/jpeg;base64,$base64Image';
+      profileImage =
+      'data:image/jpeg;base64,$base64Image';
     });
   }
 
   String? selectedGenderValue() {
-    final gender = genderController.text.trim().toLowerCase();
+    final normalized = normalizeGenderForStorage(
+      genderController.text,
+    );
 
-    if (gender == 'male' || gender == 'ذكر') return 'Male';
-    if (gender == 'female' || gender == 'أنثى' || gender == 'انثى') {
-      return 'Female';
-    }
+    if (normalized.isEmpty) return null;
 
-    return null;
+    return normalized;
   }
 
   Future<void> pickBirthDate() async {
@@ -97,7 +150,9 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
     try {
       if (birthController.text.trim().isNotEmpty) {
-        initialDate = DateTime.parse(birthController.text.trim());
+        initialDate = DateTime.parse(
+          birthController.text.trim(),
+        );
       }
     } catch (_) {}
 
@@ -108,56 +163,118 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       lastDate: DateTime.now(),
       helpText: AppStrings.dateOfBirth,
       cancelText: AppStrings.cancel,
-      confirmText: AppStrings.isArabic ? 'اختيار' : 'Select',
+      confirmText:
+      AppStrings.isArabic ? 'اختيار' : 'Select',
     );
 
-    if (pickedDate != null) {
-      setState(() {
-        birthController.text =
-        '${pickedDate.year}-${pickedDate.month.toString().padLeft(2, '0')}-${pickedDate.day.toString().padLeft(2, '0')}';
-      });
-    }
+    if (pickedDate == null) return;
+
+    setState(() {
+      birthController.text =
+      '${pickedDate.year}-'
+          '${pickedDate.month.toString().padLeft(2, '0')}-'
+          '${pickedDate.day.toString().padLeft(2, '0')}';
+    });
   }
 
   Future<void> saveProfile() async {
-    setState(() => isLoading = true);
+    if (isLoading) return;
 
-    final success = await ApiService.updateUser(
-      userId: UserSession.userId!,
-      fullName: nameController.text.trim(),
-      email: emailController.text.trim(),
-      password: '',
-      phoneNumber: phoneController.text.trim(),
-      address: addressController.text.trim(),
-      gender: genderController.text.trim(),
-      dateOfBirth: birthController.text.trim(),
-      profileImage: profileImage.isEmpty
-          ? 'assets/images/profile.jpg'
-          : profileImage,
+    final userId = UserSession.userId;
+
+    if (userId == null || userId <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            AppStrings.profileUpdateFailed,
+          ),
+        ),
+      );
+      return;
+    }
+
+    setState(() {
+      isLoading = true;
+    });
+
+    final storedGender = normalizeGenderForStorage(
+      genderController.text,
     );
 
-    if (!mounted) return;
-
-    setState(() => isLoading = false);
-
-    if (success) {
-      UserSession.fullName = nameController.text.trim();
-      UserSession.email = emailController.text.trim();
-      UserSession.phoneNumber = phoneController.text.trim();
-      UserSession.address = addressController.text.trim();
-      UserSession.gender = genderController.text.trim();
-      UserSession.dateOfBirth = birthController.text.trim();
-      UserSession.profileImage = profileImage;
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(AppStrings.profileUpdated)),
+    try {
+      final success = await ApiService.updateUser(
+        userId: userId,
+        fullName: nameController.text.trim(),
+        email: emailController.text.trim(),
+        password: '',
+        phoneNumber: phoneController.text.trim(),
+        address: addressController.text.trim(),
+        gender: storedGender,
+        dateOfBirth: birthController.text.trim(),
+        profileImage: profileImage.isEmpty
+            ? 'assets/images/profile.jpg'
+            : profileImage,
       );
 
-      Navigator.pop(context, true);
-    } else {
+      if (!mounted) return;
+
+      if (success) {
+        UserSession.fullName =
+            nameController.text.trim();
+
+        UserSession.email =
+            emailController.text.trim();
+
+        UserSession.phoneNumber =
+            phoneController.text.trim();
+
+        UserSession.address =
+            addressController.text.trim();
+
+        UserSession.gender = storedGender;
+
+        UserSession.dateOfBirth =
+            birthController.text.trim();
+
+        UserSession.profileImage =
+        profileImage.isEmpty
+            ? 'assets/images/profile.jpg'
+            : profileImage;
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              AppStrings.profileUpdated,
+            ),
+          ),
+        );
+
+        Navigator.pop(context, true);
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              AppStrings.profileUpdateFailed,
+            ),
+          ),
+        );
+      }
+    } catch (_) {
+      if (!mounted) return;
+
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(AppStrings.profileUpdateFailed)),
+        SnackBar(
+          content: Text(
+            AppStrings.profileUpdateFailed,
+          ),
+        ),
       );
+    } finally {
+      if (mounted) {
+        setState(() {
+          isLoading = false;
+        });
+      }
     }
   }
 
@@ -176,69 +293,148 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   Widget build(BuildContext context) {
     const primary = Color(0xff5B2EFF);
 
-    return Scaffold(
-      backgroundColor: const Color(0xffF7F8FC),
-      appBar: AppBar(
-        title: Text(AppStrings.editProfile),
-        backgroundColor: Colors.white,
-        foregroundColor: Colors.black,
-        elevation: 0,
-      ),
-      body: Center(
-        child: Container(
-          width: 390,
-          padding: const EdgeInsets.all(20),
-          child: ListView(
-            children: [
-              const SizedBox(height: 16),
+    final bool isArabic = AppStrings.isArabic;
+    final TextDirection textDirection =
+    isArabic ? TextDirection.rtl : TextDirection.ltr;
 
-              Center(
-                child: CircleAvatar(
-                  radius: 55,
-                  backgroundColor: const Color(0xffEDE7FF),
-                  backgroundImage: getProfileImage(),
+    return Directionality(
+      textDirection: textDirection,
+      child: Scaffold(
+        backgroundColor: const Color(0xffF7F8FC),
+        appBar: AppBar(
+          title: Text(AppStrings.editProfile),
+          backgroundColor: Colors.white,
+          foregroundColor: Colors.black,
+          elevation: 0,
+        ),
+        body: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(
+              maxWidth: 520,
+            ),
+            child: SizedBox(
+              width: double.infinity,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 18,
                 ),
-              ),
+                child: ListView(
+                  children: [
+                    const SizedBox(height: 18),
 
-              const SizedBox(height: 10),
-
-              OutlinedButton.icon(
-                onPressed: isLoading ? null : pickProfileImage,
-                icon: const Icon(Icons.image),
-                label: const Text('Choose Profile Image'),
-              ),
-
-              const SizedBox(height: 20),
-
-              buildField(AppStrings.fullName, Icons.person, nameController),
-              buildField(AppStrings.email, Icons.email, emailController),
-              buildField(AppStrings.phoneNumber, Icons.phone, phoneController),
-              buildField(AppStrings.address, Icons.location_on, addressController),
-              buildGenderDropdown(),
-              buildDatePickerField(),
-
-              const SizedBox(height: 20),
-
-              SizedBox(
-                height: 52,
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: primary,
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
+                    Center(
+                      child: CircleAvatar(
+                        radius: 55,
+                        backgroundColor:
+                        const Color(0xffEDE7FF),
+                        backgroundImage:
+                        getProfileImage(),
+                      ),
                     ),
-                  ),
-                  onPressed: isLoading ? null : saveProfile,
-                  child: isLoading
-                      ? const CircularProgressIndicator(color: Colors.white)
-                      : Text(
-                    AppStrings.saveChanges,
-                    style: const TextStyle(fontSize: 17),
-                  ),
+
+                    const SizedBox(height: 12),
+
+                    SizedBox(
+                      width: double.infinity,
+                      height: 48,
+                      child: OutlinedButton.icon(
+                        onPressed: isLoading
+                            ? null
+                            : pickProfileImage,
+                        icon: const Icon(Icons.image),
+                        label: Text(
+                          isArabic
+                              ? 'اختيار صورة الملف الشخصي'
+                              : 'Choose Profile Image',
+                        ),
+                      ),
+                    ),
+
+                    const SizedBox(height: 20),
+
+                    buildField(
+                      AppStrings.fullName,
+                      Icons.person,
+                      nameController,
+                    ),
+
+                    buildField(
+                      AppStrings.email,
+                      Icons.email,
+                      emailController,
+                      keyboardType:
+                      TextInputType.emailAddress,
+                      forceLtr: true,
+                    ),
+
+                    buildField(
+                      AppStrings.phoneNumber,
+                      Icons.phone,
+                      phoneController,
+                      keyboardType:
+                      TextInputType.phone,
+                      forceLtr: true,
+                    ),
+
+                    buildField(
+                      AppStrings.address,
+                      Icons.location_on,
+                      addressController,
+                    ),
+
+                    buildGenderDropdown(),
+
+                    buildDatePickerField(),
+
+                    const SizedBox(height: 20),
+
+                    SizedBox(
+                      width: double.infinity,
+                      height: 52,
+                      child: ElevatedButton(
+                        style:
+                        ElevatedButton.styleFrom(
+                          backgroundColor: primary,
+                          foregroundColor:
+                          Colors.white,
+                          shape:
+                          RoundedRectangleBorder(
+                            borderRadius:
+                            BorderRadius.circular(
+                              16,
+                            ),
+                          ),
+                        ),
+                        onPressed: isLoading
+                            ? null
+                            : saveProfile,
+                        child: isLoading
+                            ? const SizedBox(
+                          width: 22,
+                          height: 22,
+                          child:
+                          CircularProgressIndicator(
+                            color: Colors.white,
+                            strokeWidth: 2,
+                          ),
+                        )
+                            : Text(
+                          AppStrings.saveChanges,
+                          textDirection:
+                          textDirection,
+                          style:
+                          const TextStyle(
+                            fontSize: 17,
+                          ),
+                        ),
+                      ),
+                    ),
+
+                    const SizedBox(height: 24),
+                  ],
                 ),
               ),
-            ],
+            ),
           ),
         ),
       ),
@@ -246,23 +442,52 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   }
 
   Widget buildGenderDropdown() {
+    final bool isArabic = AppStrings.isArabic;
+    final TextDirection textDirection =
+    isArabic ? TextDirection.rtl : TextDirection.ltr;
+
     return Padding(
-      padding: const EdgeInsets.only(bottom: 14),
+      padding: const EdgeInsets.only(
+        bottom: 14,
+      ),
       child: DropdownButtonFormField<String>(
         value: selectedGenderValue(),
-        decoration: inputDecoration(AppStrings.gender, Icons.wc),
+        decoration: inputDecoration(
+          AppStrings.gender,
+          Icons.wc,
+        ),
+        isExpanded: true,
         items: [
-          DropdownMenuItem(
+          DropdownMenuItem<String>(
             value: 'Male',
-            child: Text(AppStrings.isArabic ? 'ذكر' : 'Male'),
+            child: Align(
+              alignment: isArabic
+                  ? Alignment.centerRight
+                  : Alignment.centerLeft,
+              child: Text(
+                isArabic ? 'ذكر' : 'Male',
+                textDirection: textDirection,
+              ),
+            ),
           ),
-          DropdownMenuItem(
+          DropdownMenuItem<String>(
             value: 'Female',
-            child: Text(AppStrings.isArabic ? 'أنثى' : 'Female'),
+            child: Align(
+              alignment: isArabic
+                  ? Alignment.centerRight
+                  : Alignment.centerLeft,
+              child: Text(
+                isArabic ? 'أنثى' : 'Female',
+                textDirection: textDirection,
+              ),
+            ),
           ),
         ],
-        onChanged: (value) {
+        onChanged: isLoading
+            ? null
+            : (value) {
           if (value == null) return;
+
           setState(() {
             genderController.text = value;
           });
@@ -273,13 +498,19 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
   Widget buildDatePickerField() {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 14),
+      padding: const EdgeInsets.only(
+        bottom: 14,
+      ),
       child: InkWell(
         borderRadius: BorderRadius.circular(16),
-        onTap: pickBirthDate,
+        onTap: isLoading ? null : pickBirthDate,
         child: AbsorbPointer(
           child: TextField(
             controller: birthController,
+            textDirection: TextDirection.ltr,
+            textAlign: AppStrings.isArabic
+                ? TextAlign.right
+                : TextAlign.left,
             decoration: inputDecoration(
               AppStrings.dateOfBirth,
               Icons.calendar_month,
@@ -293,26 +524,61 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   Widget buildField(
       String hint,
       IconData icon,
-      TextEditingController controller,
-      ) {
+      TextEditingController controller, {
+        TextInputType? keyboardType,
+        bool forceLtr = false,
+      }) {
+    final bool isArabic = AppStrings.isArabic;
+
     return Padding(
-      padding: const EdgeInsets.only(bottom: 14),
+      padding: const EdgeInsets.only(
+        bottom: 14,
+      ),
       child: TextField(
         controller: controller,
-        decoration: inputDecoration(hint, icon),
+        keyboardType: keyboardType,
+        textDirection: forceLtr
+            ? TextDirection.ltr
+            : isArabic
+            ? TextDirection.rtl
+            : TextDirection.ltr,
+        textAlign:
+        isArabic ? TextAlign.right : TextAlign.left,
+        decoration: inputDecoration(
+          hint,
+          icon,
+        ),
       ),
     );
   }
 
-  InputDecoration inputDecoration(String hint, IconData icon) {
+  InputDecoration inputDecoration(
+      String hint,
+      IconData icon,
+      ) {
+    final bool isArabic = AppStrings.isArabic;
+
     return InputDecoration(
       hintText: hint,
-      prefixIcon: Icon(icon),
+      hintTextDirection:
+      isArabic ? TextDirection.rtl : TextDirection.ltr,
+      prefixIcon: isArabic ? null : Icon(icon),
+      suffixIcon: isArabic ? Icon(icon) : null,
       filled: true,
       fillColor: Colors.white,
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(16),
         borderSide: BorderSide.none,
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(16),
+        borderSide: BorderSide.none,
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(16),
+        borderSide: const BorderSide(
+          color: Color(0xff5B2EFF),
+        ),
       ),
     );
   }
