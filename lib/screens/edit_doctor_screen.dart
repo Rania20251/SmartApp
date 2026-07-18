@@ -255,10 +255,10 @@ class _EditDoctorScreenState extends State<EditDoctorScreen> {
 
   @override
   Widget build(BuildContext context) {
-    const primary = Color(0xff5B2EFF);
+    const primary = Color(0xFF5B2EFF);
 
     return Scaffold(
-      backgroundColor: const Color(0xffF7F8FC),
+      backgroundColor: const Color(0xFFF7F8FC),
       appBar: AppBar(
         title: Text(AppStrings.editDoctor),
         backgroundColor: Colors.white,
@@ -276,7 +276,7 @@ class _EditDoctorScreenState extends State<EditDoctorScreen> {
               Center(
                 child: CircleAvatar(
                   radius: 52,
-                  backgroundColor: const Color(0xffEDE7FF),
+                  backgroundColor: const Color(0xFFEDE7FF),
                   backgroundImage: previewImage,
                   child: previewImage == null
                       ? const Icon(Icons.person, size: 55, color: primary)

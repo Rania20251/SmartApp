@@ -13,8 +13,8 @@ class ManageMedicalRecordsScreen extends StatefulWidget {
 
 class _ManageMedicalRecordsScreenState
     extends State<ManageMedicalRecordsScreen> {
-  static const Color primary = Color(0xff5B2EFF);
-  static const Color background = Color(0xffF7F8FC);
+  static const Color primary = Color(0xFF5B2EFF);
+  static const Color background = Color(0xFFF7F8FC);
 
   final List<Map<String, dynamic>> _records = <Map<String, dynamic>>[];
 
@@ -479,7 +479,7 @@ class _MedicalRecordCard extends StatelessWidget {
     required this.onDelete,
   });
 
-  static const Color primary = Color(0xff5B2EFF);
+  static const Color primary = Color(0xFF5B2EFF);
 
   final String title;
   final String description;
@@ -508,7 +508,7 @@ class _MedicalRecordCard extends StatelessWidget {
         children: [
           const CircleAvatar(
             radius: 30,
-            backgroundColor: Color(0xffEDE7FF),
+            backgroundColor: Color(0xFFEDE7FF),
             child: Icon(
               Icons.description,
               color: primary,

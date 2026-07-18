@@ -32,7 +32,7 @@ class DoctorDetailsScreen extends StatefulWidget {
 }
 
 class _DoctorDetailsScreenState extends State<DoctorDetailsScreen> {
-  static const Color primary = Color(0xff5B2EFF);
+  static const Color primary = Color(0xFF5B2EFF);
   static const List<String> times = ['09:00 AM', '10:30 AM', '12:00 PM'];
 
   int selectedDay = 1;
@@ -302,7 +302,7 @@ class _DoctorDetailsScreenState extends State<DoctorDetailsScreen> {
     return Directionality(
       textDirection: AppStrings.isArabic ? TextDirection.rtl : TextDirection.ltr,
       child: Scaffold(
-        backgroundColor: const Color(0xffF7F8FC),
+        backgroundColor: const Color(0xFFF7F8FC),
         appBar: AppBar(
           title: Text(AppStrings.doctorDetails),
           backgroundColor: Colors.white,

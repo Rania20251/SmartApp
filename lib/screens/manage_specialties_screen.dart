@@ -127,7 +127,7 @@ class _ManageSpecialtiesScreenState extends State<ManageSpecialtiesScreen> {
                             height: 48,
                             decoration: BoxDecoration(
                               color: isSelected
-                                  ? const Color(0xff5B2EFF)
+                                  ? const Color(0xFF5B2EFF)
                                   : const Color(0xffF2F2F2),
                               borderRadius: BorderRadius.circular(14),
                             ),
@@ -238,12 +238,12 @@ class _ManageSpecialtiesScreenState extends State<ManageSpecialtiesScreen> {
 
   @override
   Widget build(BuildContext context) {
-    const primary = Color(0xff5B2EFF);
+    const primary = Color(0xFF5B2EFF);
 
     return Directionality(
       textDirection: AppStrings.isArabic ? TextDirection.rtl : TextDirection.ltr,
       child: Scaffold(
-        backgroundColor: const Color(0xffF7F8FC),
+        backgroundColor: const Color(0xFFF7F8FC),
         appBar: AppBar(
           title: Text(AppStrings.manageSpecialties),
           backgroundColor: Colors.white,

@@ -226,7 +226,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         children: [
                           CircleAvatar(
                             radius: 24,
-                            backgroundColor: const Color(0xffEDE7FF),
+                            backgroundColor: const Color(0xFFEDE7FF),
                             backgroundImage:
                             i < bannerImages.length && bannerImages[i].trim().isNotEmpty
                                 ? bannerImageProvider(bannerImages[i])
@@ -235,7 +235,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             i >= bannerImages.length || bannerImages[i].trim().isEmpty
                                 ? const Icon(
                               Icons.image,
-                              color: Color(0xff5B2EFF),
+                              color: Color(0xFF5B2EFF),
                             )
                                 : null,
                           ),
@@ -257,7 +257,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             },
                             icon: const Icon(
                               Icons.upload_file,
-                              color: Color(0xff5B2EFF),
+                              color: Color(0xFF5B2EFF),
                             ),
                           ),
                           if (i < bannerImages.length && bannerImages[i].trim().isNotEmpty)
@@ -280,7 +280,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     height: 46,
                     child: ElevatedButton(
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xff5B2EFF),
+                        backgroundColor: const Color(0xFF5B2EFF),
                         foregroundColor: Colors.white,
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(14),
@@ -320,7 +320,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget buildHomeBanner() {
-    const primary = Color(0xff5B2EFF);
+    const primary = Color(0xFF5B2EFF);
     final images = activeBannerImages;
     final hasImages = images.isNotEmpty;
 
@@ -431,7 +431,7 @@ class _HomeScreenState extends State<HomeScreen> {
       padding: const EdgeInsets.all(22),
       decoration: BoxDecoration(
         gradient: const LinearGradient(
-          colors: [Color(0xff6A3CFF), Color(0xff4D1FFF)],
+          colors: [Color(0xFF6A3CFF), Color(0xFF4D1FFF)],
         ),
         borderRadius: BorderRadius.circular(26),
       ),
@@ -627,12 +627,12 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    const primary = Color(0xff5B2EFF);
+    const primary = Color(0xFF5B2EFF);
 
     return Directionality(
       textDirection: AppStrings.isArabic ? TextDirection.rtl : TextDirection.ltr,
       child: Scaffold(
-        backgroundColor: const Color(0xffF7F8FC),
+        backgroundColor: const Color(0xFFF7F8FC),
         body: SafeArea(
           child: Center(
             child: Container(
@@ -655,7 +655,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       const Spacer(),
                       CircleAvatar(
                         radius: 24,
-                        backgroundColor: const Color(0xffEDE7FF),
+                        backgroundColor: const Color(0xFFEDE7FF),
                         backgroundImage: getUserImage(),
                       ),
                     ],
@@ -918,7 +918,7 @@ class SpecialtyCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const primary = Color(0xff5B2EFF);
+    const primary = Color(0xFF5B2EFF);
 
     return InkWell(
       borderRadius: BorderRadius.circular(18),
@@ -1045,7 +1045,7 @@ class _DoctorCardState extends State<DoctorCard> {
 
   @override
   Widget build(BuildContext context) {
-    const primary = Color(0xff5B2EFF);
+    const primary = Color(0xFF5B2EFF);
 
     return InkWell(
       borderRadius: BorderRadius.circular(20),

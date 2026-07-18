@@ -12,8 +12,9 @@ class ChangePasswordScreen extends StatefulWidget {
 }
 
 class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
-  static const Color primary = Color(0xff5B2EFF);
-  static const Color background = Color(0xffF7F8FC);
+  static const Color primary = Color(0xFF5B2EFF);
+  static const Color background = Color(0xFFF7F8FC);
+  static const Color lightPurple = Color(0xFFEDE7FF);
 
   final oldPasswordController = TextEditingController();
   final newPasswordController = TextEditingController();
@@ -75,6 +76,8 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
 
     if (isLoading) return;
 
+    FocusScope.of(context).unfocus();
+
     setState(() {
       isLoading = true;
     });
@@ -134,7 +137,9 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
   @override
   Widget build(BuildContext context) {
     return Directionality(
-      textDirection: AppStrings.isArabic ? TextDirection.rtl : TextDirection.ltr,
+      textDirection: AppStrings.isArabic
+          ? TextDirection.rtl
+          : TextDirection.ltr,
       child: Scaffold(
         backgroundColor: background,
         appBar: AppBar(
@@ -150,10 +155,19 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
             child: ListView(
               children: [
                 const SizedBox(height: 30),
-                const Icon(
-                  Icons.lock_reset,
-                  size: 80,
-                  color: primary,
+                Container(
+                  width: 104,
+                  height: 104,
+                  margin: const EdgeInsets.symmetric(horizontal: 123),
+                  decoration: const BoxDecoration(
+                    color: lightPurple,
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.lock_reset,
+                    size: 62,
+                    color: primary,
+                  ),
                 ),
                 const SizedBox(height: 20),
                 Center(
@@ -169,6 +183,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
                 Center(
                   child: Text(
                     AppStrings.enterOldAndNewPassword,
+                    textAlign: TextAlign.center,
                     style: const TextStyle(color: Colors.grey),
                   ),
                 ),
@@ -211,22 +226,34 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
                 ),
                 const SizedBox(height: 26),
                 SizedBox(
-                  height: 52,
+                  height: 54,
                   child: ElevatedButton(
                     style: ElevatedButton.styleFrom(
                       backgroundColor: primary,
                       foregroundColor: Colors.white,
-                      disabledBackgroundColor: primary.withOpacity(.65),
+                      disabledBackgroundColor: primary.withOpacity(0.65),
+                      elevation: 6,
+                      shadowColor: primary.withOpacity(0.35),
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
+                        borderRadius: BorderRadius.circular(18),
                       ),
                     ),
                     onPressed: isLoading ? null : changePassword,
                     child: isLoading
-                        ? const CircularProgressIndicator(color: Colors.white)
+                        ? const SizedBox(
+                      width: 24,
+                      height: 24,
+                      child: CircularProgressIndicator(
+                        color: Colors.white,
+                        strokeWidth: 3,
+                      ),
+                    )
                         : Text(
                       AppStrings.changePassword,
-                      style: const TextStyle(fontSize: 18),
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
                   ),
                 ),
@@ -246,13 +273,32 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
   }) {
     return InputDecoration(
       hintText: hint,
-      prefixIcon: Icon(icon),
+      prefixIcon: Icon(
+        icon,
+        color: primary,
+      ),
       suffixIcon: IconButton(
-        icon: Icon(hidden ? Icons.visibility_off : Icons.visibility),
+        icon: Icon(
+          hidden ? Icons.visibility_off : Icons.visibility,
+          color: const Color(0xFF757575),
+        ),
         onPressed: onToggle,
       ),
       filled: true,
       fillColor: Colors.white,
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(16),
+        borderSide: const BorderSide(
+          color: Color(0xFFEDEDF3),
+        ),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(16),
+        borderSide: const BorderSide(
+          color: primary,
+          width: 1.6,
+        ),
+      ),
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(16),
         borderSide: BorderSide.none,

@@ -177,12 +177,12 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
 
   @override
   Widget build(BuildContext context) {
-    const primary = Color(0xff5B2EFF);
+    const primary = Color(0xFF5B2EFF);
 
     return Directionality(
       textDirection: AppStrings.isArabic ? TextDirection.rtl : TextDirection.ltr,
       child: Scaffold(
-        backgroundColor: const Color(0xffF7F8FC),
+        backgroundColor: const Color(0xFFF7F8FC),
         appBar: AppBar(
           title: Text(AppStrings.adminDashboard),
           backgroundColor: Colors.white,
@@ -469,7 +469,7 @@ class ChartCard extends StatelessWidget {
               Text(
                 AppStrings.viewAll,
                 style: const TextStyle(
-                  color: Color(0xff5B2EFF),
+                  color: Color(0xFF5B2EFF),
                   fontWeight: FontWeight.bold,
                   fontSize: 12,
                 ),
@@ -508,11 +508,11 @@ class ChartPainter extends CustomPainter {
       ..strokeWidth = 1;
 
     final line = Paint()
-      ..color = const Color(0xff5B2EFF)
+      ..color = const Color(0xFF5B2EFF)
       ..strokeWidth = 3
       ..style = PaintingStyle.stroke;
 
-    final dot = Paint()..color = const Color(0xff5B2EFF);
+    final dot = Paint()..color = const Color(0xFF5B2EFF);
 
     for (int i = 0; i < 4; i++) {
       final y = size.height * i / 3;
@@ -671,8 +671,8 @@ class LatestPatientsCard extends StatelessWidget {
                       children: [
                         const CircleAvatar(
                           radius: 18,
-                          backgroundColor: Color(0xffEDE7FF),
-                          child: Icon(Icons.person, color: Color(0xff5B2EFF), size: 19),
+                          backgroundColor: Color(0xFFEDE7FF),
+                          child: Icon(Icons.person, color: Color(0xFF5B2EFF), size: 19),
                         ),
                         const SizedBox(width: 12),
                         Expanded(
@@ -701,7 +701,7 @@ class LatestPatientsCard extends StatelessWidget {
                 height: 44,
                 child: ElevatedButton(
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xff5B2EFF),
+                    backgroundColor: const Color(0xFF5B2EFF),
                     foregroundColor: Colors.white,
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                   ),

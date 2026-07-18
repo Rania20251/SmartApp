@@ -14,8 +14,8 @@ class ManageAppointmentsScreen extends StatefulWidget {
 }
 
 class _ManageAppointmentsScreenState extends State<ManageAppointmentsScreen> {
-  static const Color primary = Color(0xff5B2EFF);
-  static const Color background = Color(0xffF7F8FC);
+  static const Color primary = Color(0xFF5B2EFF);
+  static const Color background = Color(0xFFF7F8FC);
 
   bool firstLoadDone = false;
   bool isRefreshing = false;
@@ -670,7 +670,7 @@ class AppointmentAdminCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const primary = Color(0xff5B2EFF);
+    const primary = Color(0xFF5B2EFF);
 
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
@@ -692,7 +692,7 @@ class AppointmentAdminCard extends StatelessWidget {
             children: [
               const CircleAvatar(
                 radius: 27,
-                backgroundColor: Color(0xffEDE7FF),
+                backgroundColor: Color(0xFFEDE7FF),
                 child: Icon(
                   Icons.calendar_month,
                   color: primary,
@@ -827,7 +827,7 @@ class AppointmentAdminCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 7),
       decoration: BoxDecoration(
-        color: const Color(0xffF7F8FC),
+        color: const Color(0xFFF7F8FC),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Row(

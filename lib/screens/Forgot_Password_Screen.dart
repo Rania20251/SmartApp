@@ -192,12 +192,12 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
 
   @override
   Widget build(BuildContext context) {
-    const primary = Color(0xff5B2EFF);
+    const primary = Color(0xFF5B2EFF);
 
     return Directionality(
       textDirection: AppStrings.isArabic ? TextDirection.rtl : TextDirection.ltr,
       child: Scaffold(
-        backgroundColor: const Color(0xffF7F8FC),
+        backgroundColor: const Color(0xFFF7F8FC),
         appBar: AppBar(
           title: Text(AppStrings.isArabic ? 'نسيت كلمة المرور' : 'Forgot Password'),
           backgroundColor: Colors.white,
@@ -293,7 +293,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   }
 
   Widget stepCircle(int step) {
-    const primary = Color(0xff5B2EFF);
+    const primary = Color(0xFF5B2EFF);
     final active = currentStep >= step;
 
     return CircleAvatar(
@@ -353,7 +353,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
             child: Text(
               AppStrings.isArabic ? 'إعادة إرسال الكود' : 'Resend Code',
               style: const TextStyle(
-                color: Color(0xff5B2EFF),
+                color: Color(0xFF5B2EFF),
                 fontWeight: FontWeight.bold,
               ),
             ),
@@ -413,7 +413,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
     required String title,
     required VoidCallback onPressed,
   }) {
-    const primary = Color(0xff5B2EFF);
+    const primary = Color(0xFF5B2EFF);
 
     return SizedBox(
       width: double.infinity,

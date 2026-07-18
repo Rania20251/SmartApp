@@ -246,7 +246,7 @@ class _NotificationsScreenState extends State<NotificationsScreen>
     final lowerTitle = title.toLowerCase();
 
     if (lowerTitle.contains('booked')) {
-      return const Color(0xff5B2EFF);
+      return const Color(0xFF5B2EFF);
     }
 
     if (lowerTitle.contains('updated') ||
@@ -270,7 +270,7 @@ class _NotificationsScreenState extends State<NotificationsScreen>
     return Directionality(
       textDirection: AppStrings.isArabic ? TextDirection.rtl : TextDirection.ltr,
       child: Scaffold(
-        backgroundColor: const Color(0xffF7F8FC),
+        backgroundColor: const Color(0xFFF7F8FC),
         appBar: AppBar(
           title: Text(AppStrings.notifications),
           backgroundColor: Colors.white,

@@ -941,7 +941,7 @@ class _ManageDoctorsScreenState extends State<ManageDoctorsScreen> {
     return Directionality(
       textDirection: AppStrings.isArabic ? TextDirection.rtl : TextDirection.ltr,
       child: Scaffold(
-        backgroundColor: const Color(0xffF7F8FC),
+        backgroundColor: const Color(0xFFF7F8FC),
         appBar: AppBar(
           title: Text(AppStrings.manageDoctors),
           backgroundColor: Colors.white,

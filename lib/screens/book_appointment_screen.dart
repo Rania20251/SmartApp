@@ -142,12 +142,12 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
 
   @override
   Widget build(BuildContext context) {
-    const primary = Color(0xff5B2EFF);
+    const primary = Color(0xFF5B2EFF);
 
     return Directionality(
       textDirection: AppStrings.isArabic ? TextDirection.rtl : TextDirection.ltr,
       child: Scaffold(
-        backgroundColor: const Color(0xffF7F8FC),
+        backgroundColor: const Color(0xFFF7F8FC),
         appBar: AppBar(
           title: Text(AppStrings.bookAppointment),
           backgroundColor: Colors.white,
@@ -202,7 +202,7 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
                           hintText: AppStrings.selectDoctor,
                           prefixIcon: const Icon(Icons.person),
                           filled: true,
-                          fillColor: const Color(0xffF7F8FC),
+                          fillColor: const Color(0xFFF7F8FC),
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(16),
                             borderSide: BorderSide.none,
@@ -246,7 +246,7 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
                           width: double.infinity,
                           padding: const EdgeInsets.all(16),
                           decoration: BoxDecoration(
-                            color: const Color(0xffF7F8FC),
+                            color: const Color(0xFFF7F8FC),
                             borderRadius: BorderRadius.circular(16),
                           ),
                           child: Row(
@@ -266,7 +266,7 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
                           width: double.infinity,
                           padding: const EdgeInsets.all(16),
                           decoration: BoxDecoration(
-                            color: const Color(0xffF7F8FC),
+                            color: const Color(0xFFF7F8FC),
                             borderRadius: BorderRadius.circular(16),
                           ),
                           child: Row(

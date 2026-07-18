@@ -291,7 +291,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
-    const primary = Color(0xff5B2EFF);
+    const primary = Color(0xFF5B2EFF);
 
     final bool isArabic = AppStrings.isArabic;
     final TextDirection textDirection =
@@ -300,7 +300,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     return Directionality(
       textDirection: textDirection,
       child: Scaffold(
-        backgroundColor: const Color(0xffF7F8FC),
+        backgroundColor: const Color(0xFFF7F8FC),
         appBar: AppBar(
           title: Text(AppStrings.editProfile),
           backgroundColor: Colors.white,
@@ -326,7 +326,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                       child: CircleAvatar(
                         radius: 55,
                         backgroundColor:
-                        const Color(0xffEDE7FF),
+                        const Color(0xFFEDE7FF),
                         backgroundImage:
                         getProfileImage(),
                       ),
@@ -577,7 +577,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(16),
         borderSide: const BorderSide(
-          color: Color(0xff5B2EFF),
+          color: Color(0xFF5B2EFF),
         ),
       ),
     );

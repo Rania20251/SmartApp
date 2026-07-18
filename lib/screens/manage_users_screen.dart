@@ -154,10 +154,10 @@ class _ManageUsersScreenState extends State<ManageUsersScreen> {
   }
 
   Widget defaultUserImage() {
-    const primary = Color(0xff5B2EFF);
+    const primary = Color(0xFF5B2EFF);
     return const CircleAvatar(
       radius: 30,
-      backgroundColor: Color(0xffEDE7FF),
+      backgroundColor: Color(0xFFEDE7FF),
       child: Icon(Icons.person, color: primary),
     );
   }
@@ -253,7 +253,7 @@ class _ManageUsersScreenState extends State<ManageUsersScreen> {
     return Directionality(
       textDirection: AppStrings.isArabic ? TextDirection.rtl : TextDirection.ltr,
       child: Scaffold(
-        backgroundColor: const Color(0xffF7F8FC),
+        backgroundColor: const Color(0xFFF7F8FC),
         appBar: AppBar(
           title: Text(AppStrings.manageUsers),
           backgroundColor: Colors.white,

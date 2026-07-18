@@ -25,7 +25,7 @@ class _MainScreenState extends State<MainScreen> {
 
   @override
   Widget build(BuildContext context) {
-    const primary = Color(0xff5B2EFF);
+    const primary = Color(0xFF5B2EFF);
     const navigationMaxWidth = 520.0;
 
     final screens = <Widget>[

@@ -14,9 +14,9 @@ class AddDoctorScreen extends StatefulWidget {
 }
 
 class _AddDoctorScreenState extends State<AddDoctorScreen> {
-  static const Color primary = Color(0xff5B2EFF);
-  static const Color background = Color(0xffF7F8FC);
-  static const Color lightPurple = Color(0xffEDE7FF);
+  static const Color primary = Color(0xFF5B2EFF);
+  static const Color background = Color(0xFFF7F8FC);
+  static const Color lightPurple = Color(0xFFEDE7FF);
 
   final nameController = TextEditingController();
   final phoneController = TextEditingController();

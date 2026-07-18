@@ -311,7 +311,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
-    const primary = Color(0xff5B2EFF);
+    const primary = Color(0xFF5B2EFF);
 
     final fullName = translateName(
       UserSession.fullName?.trim().isNotEmpty == true
@@ -343,7 +343,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       textDirection:
       AppStrings.isArabic ? TextDirection.rtl : TextDirection.ltr,
       child: Scaffold(
-        backgroundColor: const Color(0xffF7F8FC),
+        backgroundColor: const Color(0xFFF7F8FC),
         appBar: AppBar(
           title: Text(AppStrings.profile),
           backgroundColor: Colors.white,
@@ -384,7 +384,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         children: [
                           CircleAvatar(
                             radius: 60,
-                            backgroundColor: const Color(0xffEDE7FF),
+                            backgroundColor: const Color(0xFFEDE7FF),
                             backgroundImage: getProfileImage(),
                           ),
                           Positioned(
@@ -639,7 +639,7 @@ class ProfileItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const primary = Color(0xff5B2EFF);
+    const primary = Color(0xFF5B2EFF);
 
     final alignment = AppStrings.isArabic
         ? CrossAxisAlignment.end
@@ -661,7 +661,7 @@ class ProfileItem extends StatelessWidget {
         children: [
           CircleAvatar(
             radius: 24,
-            backgroundColor: const Color(0xffEDE7FF),
+            backgroundColor: const Color(0xFFEDE7FF),
             child: Icon(
               icon,
               color: primary,

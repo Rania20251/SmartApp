@@ -418,7 +418,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
   }
 
   Widget buildSearchField() {
-    const primary = Color(0xff5B2EFF);
+    const primary = Color(0xFF5B2EFF);
 
     return Container(
       margin: const EdgeInsets.only(bottom: 14),
@@ -512,7 +512,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
 
   @override
   Widget build(BuildContext context) {
-    const primary = Color(0xff5B2EFF);
+    const primary = Color(0xFF5B2EFF);
     final currentUserId = UserSession.userId;
 
     // توحيد عرض الصفحة على Chrome مع بقاء الموبايل بعرضه الطبيعي.
@@ -533,7 +533,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
     return Directionality(
       textDirection: AppStrings.isArabic ? TextDirection.rtl : TextDirection.ltr,
       child: Scaffold(
-        backgroundColor: const Color(0xffF7F8FC),
+        backgroundColor: const Color(0xFFF7F8FC),
         appBar: AppBar(
           title: Text(AppStrings.isArabic ? 'مواعيدي' : 'My Appointments'),
           backgroundColor: Colors.white,
@@ -725,7 +725,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
     required bool selected,
     required VoidCallback onTap,
   }) {
-    const primary = Color(0xff5B2EFF);
+    const primary = Color(0xFF5B2EFF);
 
     return InkWell(
       borderRadius: BorderRadius.circular(14),
@@ -870,7 +870,7 @@ class AppointmentCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const primary = Color(0xff5B2EFF);
+    const primary = Color(0xFF5B2EFF);
 
     final appointmentId = int.tryParse(
       valueOf(
