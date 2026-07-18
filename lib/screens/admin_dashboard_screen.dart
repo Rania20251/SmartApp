@@ -58,7 +58,33 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
 
     _loadNotificationsCount(forceRefresh: false);
     _loadRecentPatients();
-    _loadDashboardCounts();
+
+    // لا نجعل عدادات الداشبورد تنافس صفحة المواعيد عند بداية التطبيق.
+    Future<void>.delayed(const Duration(milliseconds: 500), () {
+      if (!mounted) return;
+      _loadDashboardCounts();
+    });
+
+    // عند حجز/تأكيد/إكمال/إلغاء/حذف موعد نحدث عداد المواعيد فقط.
+    ApiService.appointmentsVersion.addListener(
+      _onAppointmentsChanged,
+    );
+  }
+
+  @override
+  void dispose() {
+    ApiService.appointmentsVersion.removeListener(
+      _onAppointmentsChanged,
+    );
+    _dashboardRequestVersion++;
+    super.dispose();
+  }
+
+  void _onAppointmentsChanged() {
+    if (!mounted) return;
+
+    _loadAppointmentsCount(forceRefresh: true);
+    _loadPendingAppointmentsCount(forceRefresh: true);
   }
 
   Future<void> _loadDashboardCounts() async {
@@ -70,8 +96,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       });
     }
 
-    // كل عداد يتحدث فور وصوله، ولا ينتظر أبطأ طلب.
-    final requests = <Future<void>>[
+    // كل عداد يعمل لوحده؛ بطء المواعيد لا يوقف بقية الداشبورد.
+    await Future.wait<void>([
       _loadSingleCount(
         index: 0,
         requestVersion: requestVersion,
@@ -82,19 +108,15 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         requestVersion: requestVersion,
         request: ApiService.getDoctorsCount(),
       ),
-      _loadSingleCount(
-        index: 2,
+      _loadAppointmentsCount(
+        forceRefresh: false,
         requestVersion: requestVersion,
-        request: ApiService.getAppointmentsCount(),
       ),
-      _loadSingleCount(
-        index: 3,
+      _loadPendingAppointmentsCount(
+        forceRefresh: false,
         requestVersion: requestVersion,
-        request: ApiService.getMedicalRecordsCount(),
       ),
-    ];
-
-    await Future.wait(requests);
+    ]);
 
     if (!mounted || requestVersion != _dashboardRequestVersion) return;
 
@@ -103,13 +125,58 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     });
   }
 
+  Future<void> _loadAppointmentsCount({
+    bool forceRefresh = false,
+    int? requestVersion,
+  }) async {
+    final version = requestVersion ?? _dashboardRequestVersion;
+
+    try {
+      final count = await ApiService.getAppointmentsCount(
+        forceRefresh: forceRefresh,
+      ).timeout(const Duration(seconds: 20));
+
+      if (!mounted || version != _dashboardRequestVersion) return;
+
+      setState(() {
+        dashboardCounts[2] = count;
+        _lastDashboardCounts[2] = count;
+      });
+    } catch (_) {
+      // لا نحذف آخر رقم صحيح ولا نظهر صفراً وهمياً.
+    }
+  }
+
+
+  Future<void> _loadPendingAppointmentsCount({
+    bool forceRefresh = false,
+    int? requestVersion,
+  }) async {
+    final version = requestVersion ?? _dashboardRequestVersion;
+
+    try {
+      final count = await ApiService.getPendingAppointmentsCount(
+        forceRefresh: forceRefresh,
+      ).timeout(const Duration(seconds: 20));
+
+      if (!mounted || version != _dashboardRequestVersion) return;
+
+      setState(() {
+        dashboardCounts[3] = count;
+        _lastDashboardCounts[3] = count;
+      });
+    } catch (_) {
+      // لا نحذف آخر رقم صحيح ولا نظهر صفراً وهمياً.
+    }
+  }
+
   Future<void> _loadSingleCount({
     required int index,
     required int requestVersion,
     required Future<int> request,
   }) async {
     try {
-      final value = await request.timeout(const Duration(seconds: 12));
+      final value = await request.timeout(const Duration(seconds: 20));
 
       if (!mounted || requestVersion != _dashboardRequestVersion) return;
 
@@ -156,23 +223,32 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   void refreshDashboardCounts() {
     if (isDashboardRefreshing) return;
 
-    _loadRecentPatients();
-
     setState(() {
+      _loadRecentPatients();
       // نحتفظ بالقيم الحالية أثناء التحديث.
     });
 
     _loadDashboardCounts();
   }
 
-  Future<void> openAndRefresh(Widget screen) async {
-    await Navigator.push(
-      context,
+  Future<void> openAndRefresh(
+      Widget screen, {
+        bool appointmentsScreen = false,
+      }) async {
+    await Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => screen),
     );
 
     if (!mounted) return;
-    refreshDashboardCounts();
+
+    if (appointmentsScreen) {
+      await Future.wait<void>([
+        _loadAppointmentsCount(forceRefresh: true),
+        _loadPendingAppointmentsCount(forceRefresh: true),
+      ]);
+    } else {
+      refreshDashboardCounts();
+    }
   }
 
   @override
@@ -359,7 +435,10 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                     subtitle: AppStrings.manageAppointmentsSubtitle,
                     color: Colors.red,
                     onTap: () {
-                      openAndRefresh(const ManageAppointmentsScreen());
+                      openAndRefresh(
+                        const ManageAppointmentsScreen(),
+                        appointmentsScreen: true,
+                      );
                     },
                   ),
                   ManageTile(
@@ -556,11 +635,11 @@ class LatestPatientsCard extends StatelessWidget {
 
 
   String translatePatientName(String name) {
-    final clean = name.trim();
+    final clean = name
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
 
     if (clean.isEmpty) return AppStrings.noName;
-
-    final normalized = clean.toLowerCase();
 
     const englishToArabic = <String, String>{
       'hana': 'هناء',
@@ -569,6 +648,8 @@ class LatestPatientsCard extends StatelessWidget {
       'rola': 'رولا',
       'rania': 'رانيا',
       'rana': 'رنا',
+      'ramia': 'راميا',
+      'salah': 'صلاح',
       'sarah': 'سارة',
       'sara': 'سارة',
       'ahmad': 'أحمد',
@@ -576,19 +657,37 @@ class LatestPatientsCard extends StatelessWidget {
       'ali': 'علي',
       'mohammad': 'محمد',
       'mohammed': 'محمد',
+      'mohamed': 'محمد',
       'omar': 'عمر',
       'nour': 'نور',
       'noor': 'نور',
+      'adnan': 'عدنان',
+      'osama': 'أسامة',
+      'murad': 'مراد',
+      'aya': 'آية',
+      'lina': 'لينا',
+      'yara': 'يارا',
+      'mona': 'منى',
+      'huda': 'هدى',
+      'khaled': 'خالد',
+      'khalid': 'خالد',
+      'yousef': 'يوسف',
+      'yusuf': 'يوسف',
+      'mariam': 'مريم',
+      'maryam': 'مريم',
     };
 
     const arabicToEnglish = <String, String>{
       'هناء': 'Hana',
       'هالة': 'Hala',
+      'هاله': 'Hala',
       'أماني': 'Amani',
       'اماني': 'Amani',
       'رولا': 'Rola',
       'رانيا': 'Rania',
       'رنا': 'Rana',
+      'راميا': 'Ramia',
+      'صلاح': 'Salah',
       'سارة': 'Sarah',
       'ساره': 'Sarah',
       'أحمد': 'Ahmad',
@@ -597,19 +696,72 @@ class LatestPatientsCard extends StatelessWidget {
       'محمد': 'Mohammad',
       'عمر': 'Omar',
       'نور': 'Nour',
+      'عدنان': 'Adnan',
+      'أسامة': 'Osama',
+      'اسامة': 'Osama',
+      'مراد': 'Murad',
+      'آية': 'Aya',
+      'ايه': 'Aya',
+      'لينا': 'Lina',
+      'يارا': 'Yara',
+      'منى': 'Mona',
+      'هدى': 'Huda',
+      'خالد': 'Khaled',
+      'يوسف': 'Yousef',
+      'مريم': 'Mariam',
     };
 
+    final words = clean
+        .split(' ')
+        .where((word) => word.trim().isNotEmpty)
+        .toList();
+
     if (AppStrings.isArabic) {
-      return englishToArabic[normalized] ?? clean;
+      return words.map((word) {
+        final cleanedWord = word
+            .replaceAll('.', '')
+            .replaceAll(',', '')
+            .trim();
+
+        return englishToArabic[cleanedWord.toLowerCase()] ??
+            cleanedWord;
+      }).join(' ');
     }
 
-    return arabicToEnglish[clean] ?? clean;
+    return words.map((word) {
+      final cleanedWord = word
+          .replaceAll('.', '')
+          .replaceAll(',', '')
+          .trim();
+
+      return arabicToEnglish[cleanedWord] ?? cleanedWord;
+    }).join(' ');
   }
 
   String getPatientName(dynamic patient) {
-    return patient['fullName']?.toString() ??
-        patient['FullName']?.toString() ??
-        AppStrings.noName;
+    final englishName = (
+        patient['fullName'] ??
+            patient['FullName'] ??
+            ''
+    ).toString().trim();
+
+    final arabicName = (
+        patient['fullNameAr'] ??
+            patient['FullNameAr'] ??
+            ''
+    ).toString().trim();
+
+    if (AppStrings.isArabic) {
+      if (arabicName.isNotEmpty) return arabicName;
+      return englishName.isNotEmpty
+          ? translatePatientName(englishName)
+          : AppStrings.noName;
+    }
+
+    if (englishName.isNotEmpty) return englishName;
+    return arabicName.isNotEmpty
+        ? translatePatientName(arabicName)
+        : AppStrings.noName;
   }
 
   String getPatientDate(dynamic patient) {
@@ -677,7 +829,7 @@ class LatestPatientsCard extends StatelessWidget {
                         const SizedBox(width: 12),
                         Expanded(
                           child: Text(
-                            translatePatientName(getPatientName(patients[i])),
+                            getPatientName(patients[i]),
                             textDirection: AppStrings.isArabic
                                 ? TextDirection.rtl
                                 : TextDirection.ltr,

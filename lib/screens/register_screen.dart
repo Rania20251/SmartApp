@@ -15,6 +15,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
   static const Color background = Color(0xFFF7F8FC);
 
   final TextEditingController fullNameController = TextEditingController();
+  final TextEditingController fullNameArController = TextEditingController();
   final TextEditingController emailController = TextEditingController();
   final TextEditingController passwordController = TextEditingController();
 
@@ -56,11 +57,17 @@ class _RegisterScreenState extends State<RegisterScreen> {
     if (isLoading) return;
 
     final String fullName = fullNameController.text.trim();
+    final String fullNameAr = fullNameArController.text.trim();
     final String email = emailController.text.trim().toLowerCase();
     final String password = passwordController.text.trim();
 
     if (fullName.isEmpty) {
       showMessage('Please enter your full name.');
+      return;
+    }
+
+    if (fullNameAr.isEmpty) {
+      showMessage('Please enter your full name in Arabic.');
       return;
     }
 
@@ -102,6 +109,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
       final bool registered = await ApiService.register(
         fullName: fullName,
+        fullNameAr: fullNameAr,
         email: email,
         password: password,
       );
@@ -178,6 +186,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
   @override
   void dispose() {
     fullNameController.dispose();
+    fullNameArController.dispose();
     emailController.dispose();
     passwordController.dispose();
     super.dispose();
@@ -321,6 +330,17 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           textAlign: TextAlign.left,
                           decoration: fieldDecoration(
                             hint: 'Full Name',
+                            icon: Icons.person_outline_rounded,
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        TextField(
+                          controller: fullNameArController,
+                          textInputAction: TextInputAction.next,
+                          textDirection: TextDirection.rtl,
+                          textAlign: TextAlign.right,
+                          decoration: fieldDecoration(
+                            hint: 'الاسم الكامل بالعربية',
                             icon: Icons.person_outline_rounded,
                           ),
                         ),

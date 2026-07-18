@@ -26,6 +26,26 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
   int? _screenUserId;
   int? _appointmentsOwnerUserId;
   int _requestVersion = 0;
+  bool _reloadAppointmentsAfterCurrentRequest = false;
+
+  List<dynamic>? _filteredAppointmentsCache;
+  List<dynamic>? _filteredAppointmentsSource;
+  bool? _filteredAppointmentsTab;
+  String? _filteredAppointmentsQuery;
+
+  static final RegExp _spacesRegex = RegExp(r'\s+');
+  static final RegExp _arabicMarksRegex = RegExp(r'[ًٌٍَُِّْـ]');
+  static final RegExp _doctorTitlePunctuationRegex = RegExp(r'[.،,:؛]');
+
+  static const List<String> _monthsEn = <String>[
+    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+  ];
+
+  static const List<String> _monthsAr = <String>[
+    'يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو',
+    'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر',
+  ];
 
   final TextEditingController searchController = TextEditingController();
   Timer? _searchDebounce;
@@ -48,10 +68,13 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
   }
 
   void _onAppointmentsChanged() {
-    if (!mounted || isRefreshing) return;
+    if (!mounted) return;
 
-    // يحصل فقط بعد حجز/تعديل/حذف حقيقي.
-    // يستخدم الكاش إن كان محدثاً، ولا يعمل تحديثاً متكرراً.
+    // إذا حدث الحجز أثناء وجود طلب جارٍ، لا نهمل التحديث.
+    // نؤجله ليعمل فور انتهاء الطلب الحالي.
+    if (isRefreshing) return;
+
+    // التغيير المحلي موجود في كاش ApiService، لذلك لا نعيد طلب الشبكة.
     loadAppointments(
       showSmallLoading: false,
       forceRefresh: false,
@@ -74,7 +97,9 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
     bool showSmallLoading = false,
     bool forceRefresh = false,
   }) async {
-    if (isRefreshing) return;
+    if (isRefreshing) {
+      return;
+    }
 
     final requestVersion = ++_requestVersion;
     final requestUserId = UserSession.userId;
@@ -111,7 +136,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
     try {
       final data = await ApiService.getAppointments(
         forceRefresh: forceRefresh,
-      ).timeout(const Duration(seconds: 12));
+      );
 
       if (!mounted ||
           requestVersion != _requestVersion ||
@@ -123,11 +148,14 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
 
       setState(() {
         allAppointments = loadedAppointments;
+        _invalidateFilteredAppointmentsCache();
         _appointmentsOwnerUserId = requestUserId;
         firstLoadDone = true;
         isRefreshing = false;
         errorMessage = null;
       });
+
+
     } catch (_) {
       if (!mounted ||
           requestVersion != _requestVersion ||
@@ -143,8 +171,19 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
             ? AppStrings.failedLoadAppointments
             : null;
       });
+
+
     }
   }
+
+  void _invalidateFilteredAppointmentsCache() {
+    _filteredAppointmentsCache = null;
+    _filteredAppointmentsSource = null;
+    _filteredAppointmentsTab = null;
+    _filteredAppointmentsQuery = null;
+  }
+
+  void _runQueuedAppointmentsReload() {}
 
   Future<void> refreshAppointments() async {
     await loadAppointments(
@@ -163,39 +202,8 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
 
   String formatDate(dynamic value) {
     final d = parseDate(value);
-
-    final monthsEn = [
-      'Jan',
-      'Feb',
-      'Mar',
-      'Apr',
-      'May',
-      'Jun',
-      'Jul',
-      'Aug',
-      'Sep',
-      'Oct',
-      'Nov',
-      'Dec',
-    ];
-
-    final monthsAr = [
-      'يناير',
-      'فبراير',
-      'مارس',
-      'أبريل',
-      'مايو',
-      'يونيو',
-      'يوليو',
-      'أغسطس',
-      'سبتمبر',
-      'أكتوبر',
-      'نوفمبر',
-      'ديسمبر',
-    ];
-
     final monthName =
-    AppStrings.isArabic ? monthsAr[d.month - 1] : monthsEn[d.month - 1];
+    AppStrings.isArabic ? _monthsAr[d.month - 1] : _monthsEn[d.month - 1];
 
     return '${d.day.toString().padLeft(2, '0')} $monthName ${d.year}';
   }
@@ -228,7 +236,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
     )
         .trim()
         .toLowerCase()
-        .replaceAll(RegExp(r'\s+'), ' ');
+        .replaceAll(_spacesRegex, ' ');
   }
 
   bool isConfirmedStatus(String status) {
@@ -281,8 +289,8 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
     });
 
     return text
-        .replaceAll(RegExp(r'[ًٌٍَُِّْـ]'), '')
-        .replaceAll(RegExp(r'\s+'), ' ')
+        .replaceAll(_arabicMarksRegex, '')
+        .replaceAll(_spacesRegex, ' ')
         .trim();
   }
 
@@ -307,7 +315,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
   }
 
   String firstNameOf(String fullName) {
-    final cleanName = fullName.trim().replaceAll(RegExp(r'\s+'), ' ');
+    final cleanName = fullName.trim().replaceAll(_spacesRegex, ' ');
     if (cleanName.isEmpty) return '';
 
     final parts = cleanName
@@ -330,7 +338,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
 
     for (final part in parts) {
       final normalizedPart = normalizeSearchText(
-        part.replaceAll(RegExp(r'[.،,:؛]'), ''),
+        part.replaceAll(_doctorTitlePunctuationRegex, ''),
       );
 
       if (!doctorTitles.contains(normalizedPart)) {
@@ -366,12 +374,17 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
   }
 
   List<dynamic> filteredAppointments(List<dynamic> appointments) {
+    if (identical(_filteredAppointmentsSource, appointments) &&
+        _filteredAppointmentsTab == showUpcoming &&
+        _filteredAppointmentsQuery == searchQuery &&
+        _filteredAppointmentsCache != null) {
+      return _filteredAppointmentsCache!;
+    }
+
     final filtered = appointments.where((appointment) {
       final status = normalizedStatus(appointment);
-
-      final matchesTab = showUpcoming
-          ? !isPastStatus(status)
-          : isPastStatus(status);
+      final matchesTab =
+      showUpcoming ? !isPastStatus(status) : isPastStatus(status);
 
       return matchesTab && matchesSearch(appointment);
     }).toList();
@@ -380,13 +393,17 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
       final dateA = parseDate(
         valueOf(a, ['appointmentDate', 'AppointmentDate'], ''),
       );
-
       final dateB = parseDate(
         valueOf(b, ['appointmentDate', 'AppointmentDate'], ''),
       );
 
       return dateB.compareTo(dateA);
     });
+
+    _filteredAppointmentsSource = appointments;
+    _filteredAppointmentsTab = showUpcoming;
+    _filteredAppointmentsQuery = searchQuery;
+    _filteredAppointmentsCache = filtered;
 
     return filtered;
   }
@@ -402,6 +419,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
 
       setState(() {
         searchQuery = normalizedValue;
+        _invalidateFilteredAppointmentsCache();
       });
     });
   }
@@ -414,6 +432,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
 
     setState(() {
       searchQuery = '';
+      _invalidateFilteredAppointmentsCache();
     });
   }
 
@@ -505,9 +524,9 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
             0;
         return id != appointmentId;
       }).toList();
+      _invalidateFilteredAppointmentsCache();
     });
 
-    ApiService.resetAppointmentsCache(UserSession.userId);
   }
 
   @override
@@ -597,7 +616,10 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
                                       selected: showUpcoming,
                                       onTap: () {
                                         if (!showUpcoming) {
-                                          setState(() => showUpcoming = true);
+                                          setState(() {
+                                            showUpcoming = true;
+                                            _invalidateFilteredAppointmentsCache();
+                                          });
                                         }
                                       },
                                     ),
@@ -609,7 +631,10 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
                                       selected: !showUpcoming,
                                       onTap: () {
                                         if (showUpcoming) {
-                                          setState(() => showUpcoming = false);
+                                          setState(() {
+                                            showUpcoming = false;
+                                            _invalidateFilteredAppointmentsCache();
+                                          });
                                         }
                                       },
                                     ),
@@ -660,22 +685,24 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
                                     '',
                                   );
 
-                                  return RepaintBoundary(
-                                    child: AppointmentCard(
-                                      key: ValueKey(appointmentId),
-                                      appointment:
-                                      Map<String, dynamic>.from(appointment),
-                                      doctorId: doctorId,
-                                      date: formatDate(dateValue),
-                                      time: formatTime(dateValue),
-                                      onDeleted: () =>
-                                          removeAppointmentLocal(appointmentId),
+                                  return AppointmentCard(
+                                    key: ValueKey(appointmentId),
+                                    appointment: appointment
+                                    is Map<String, dynamic>
+                                        ? appointment
+                                        : Map<String, dynamic>.from(
+                                      appointment,
                                     ),
+                                    doctorId: doctorId,
+                                    date: formatDate(dateValue),
+                                    time: formatTime(dateValue),
+                                    onDeleted: () =>
+                                        removeAppointmentLocal(appointmentId),
                                   );
                                 },
                                 childCount: appointments.length,
                                 addAutomaticKeepAlives: false,
-                                addRepaintBoundaries: false,
+                                addRepaintBoundaries: true,
                               ),
                             ),
                           ),
@@ -704,12 +731,14 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
                 ),
               );
 
-              if (booked == true) {
-                if (!mounted) return;
+              if (!mounted) return;
 
+              // الموعد أضيف إلى كاش ApiService فور نجاح الحجز.
+              // نعرضه مباشرة بدون انتظار الداشبورد أو البروفايل أو طلب GET جديد.
+              if (booked == true) {
                 await loadAppointments(
                   showSmallLoading: false,
-                  forceRefresh: true,
+                  forceRefresh: false,
                 );
               }
             },
@@ -793,12 +822,21 @@ class AppointmentCard extends StatelessWidget {
     if (image.startsWith('data:image')) {
       try {
         final base64Part = image.split(',').last;
-        return ClipOval(
+        return Container(
+          width: 56,
+          height: 56,
+          decoration: const BoxDecoration(
+            shape: BoxShape.circle,
+            color: Color(0xFFEDE7FF),
+          ),
+          clipBehavior: Clip.antiAlias,
           child: Image.memory(
             base64Decode(base64Part),
             width: 56,
             height: 56,
             fit: BoxFit.cover,
+            alignment: Alignment.topCenter,
+            gaplessPlayback: true,
           ),
         );
       } catch (_) {
@@ -807,26 +845,47 @@ class AppointmentCard extends StatelessWidget {
     }
 
     if (image.startsWith('http://') || image.startsWith('https://')) {
-      return ClipOval(
-        child: CachedNetworkImage(
-          imageUrl: image,
+      return Container(
+        width: 56,
+        height: 56,
+        decoration: const BoxDecoration(
+          shape: BoxShape.circle,
+          color: Color(0xFFEDE7FF),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: Image.network(
+          image,
+          key: ValueKey<String>(image),
           width: 56,
           height: 56,
           fit: BoxFit.cover,
-          fadeInDuration: Duration.zero,
-          placeholder: (_, __) => defaultDoctorImage(),
-          errorWidget: (_, __, ___) => defaultDoctorImage(),
+          alignment: Alignment.topCenter,
+          gaplessPlayback: true,
+          webHtmlElementStrategy: WebHtmlElementStrategy.prefer,
+          loadingBuilder: (context, child, loadingProgress) {
+            if (loadingProgress == null) return child;
+            return defaultDoctorImage();
+          },
+          errorBuilder: (_, __, ___) => defaultDoctorImage(),
         ),
       );
     }
 
     if (image.startsWith('assets/')) {
-      return ClipOval(
+      return Container(
+        width: 56,
+        height: 56,
+        decoration: const BoxDecoration(
+          shape: BoxShape.circle,
+          color: Color(0xFFEDE7FF),
+        ),
+        clipBehavior: Clip.antiAlias,
         child: Image.asset(
           image,
           width: 56,
           height: 56,
           fit: BoxFit.cover,
+          alignment: Alignment.topCenter,
           errorBuilder: (_, __, ___) => defaultDoctorImage(),
         ),
       );
@@ -836,12 +895,20 @@ class AppointmentCard extends StatelessWidget {
   }
 
   Widget defaultDoctorImage() {
-    return ClipOval(
+    return Container(
+      width: 56,
+      height: 56,
+      decoration: const BoxDecoration(
+        shape: BoxShape.circle,
+        color: Color(0xFFEDE7FF),
+      ),
+      clipBehavior: Clip.antiAlias,
       child: Image.asset(
         'assets/images/profile.jpg',
         width: 56,
         height: 56,
         fit: BoxFit.cover,
+        alignment: Alignment.topCenter,
       ),
     );
   }
@@ -1037,21 +1104,28 @@ class AppointmentCard extends StatelessWidget {
                   icon: const Icon(Icons.more_vert),
                   onSelected: (value) async {
                     if (value == 'delete') {
-                      onDeleted();
-
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(AppStrings.appointmentDeleted),
-                        ),
-                      );
-
                       try {
                         await ApiService.deleteAppointment(appointmentId);
-                        ApiService.resetAppointmentsCache(UserSession.userId);
-                      } catch (_) {
+
+                        onDeleted();
+
+                        if (!context.mounted) return;
+
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(
-                            content: Text(AppStrings.deleteAppointmentFailed),
+                            content: Text(AppStrings.appointmentDeleted),
+                          ),
+                        );
+                      } catch (_) {
+                        if (!context.mounted) return;
+
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              AppStrings.isArabic
+                                  ? 'تعذر حذف الموعد، حاولي مرة أخرى.'
+                                  : 'Could not delete the appointment. Please try again.',
+                            ),
                           ),
                         );
                       }

@@ -1,7 +1,14 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+import 'package:open_filex/open_filex.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../language/app_strings.dart';
 import '../services/api_service.dart';
+import '../services/file_download_helper.dart';
 
 class ManageMedicalRecordsScreen extends StatefulWidget {
   const ManageMedicalRecordsScreen({super.key});
@@ -284,6 +291,252 @@ class _ManageMedicalRecordsScreenState
     return _translateRecordText(cleanTitle);
   }
 
+
+  void _showMessage(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
+  }
+
+  String _fileNameFromRecord({
+    required String title,
+    required String fileUrl,
+  }) {
+    final cleanTitle = title.trim();
+
+    if (cleanTitle.isNotEmpty &&
+        RegExp(r'\.(pdf|jpg|jpeg|png|webp)$', caseSensitive: false)
+            .hasMatch(cleanTitle)) {
+      return cleanTitle;
+    }
+
+    final uri = Uri.tryParse(fileUrl);
+    final pathName =
+    uri == null || uri.pathSegments.isEmpty ? '' : uri.pathSegments.last;
+
+    if (pathName.trim().isNotEmpty) {
+      return Uri.decodeComponent(pathName);
+    }
+
+    return cleanTitle.isEmpty ? 'medical_report.pdf' : cleanTitle;
+  }
+
+  String _mimeType(String fileName) {
+    final name = fileName.toLowerCase();
+
+    if (name.endsWith('.pdf')) return 'application/pdf';
+    if (name.endsWith('.jpg') || name.endsWith('.jpeg')) {
+      return 'image/jpeg';
+    }
+    if (name.endsWith('.png')) return 'image/png';
+    if (name.endsWith('.webp')) return 'image/webp';
+
+    return 'application/octet-stream';
+  }
+
+  Uint8List? _decodeDataFile(String fileUrl) {
+    try {
+      final commaIndex = fileUrl.indexOf(',');
+      if (commaIndex < 0) return null;
+      return base64Decode(fileUrl.substring(commaIndex + 1));
+    } catch (_) {
+      return null;
+    }
+  }
+
+  bool _isImageFile(String fileName, String fileUrl) {
+    final value = '$fileName $fileUrl'.toLowerCase();
+
+    return value.contains('data:image') ||
+        value.endsWith('.jpg') ||
+        value.endsWith('.jpeg') ||
+        value.endsWith('.png') ||
+        value.endsWith('.webp');
+  }
+
+  Future<Uint8List?> _loadFileBytes(String fileUrl) async {
+    final cleanUrl = fileUrl.trim();
+
+    if (cleanUrl.startsWith('data:')) {
+      return _decodeDataFile(cleanUrl);
+    }
+
+    final uri = Uri.tryParse(cleanUrl);
+    if (uri == null) return null;
+
+    try {
+      final response =
+      await http.get(uri).timeout(const Duration(seconds: 30));
+      if (response.statusCode == 200) {
+        return response.bodyBytes;
+      }
+    } catch (_) {}
+
+    return null;
+  }
+
+  Future<void> _saveFile({
+    required String fileUrl,
+    required String fileName,
+    bool openAfterSaving = false,
+  }) async {
+    if (fileUrl.trim().isEmpty) {
+      _showMessage(
+        AppStrings.isArabic ? 'لا يوجد ملف مرفق' : 'No attached file',
+      );
+      return;
+    }
+
+    final bytes = await _loadFileBytes(fileUrl);
+
+    if (bytes == null || bytes.isEmpty) {
+      _showMessage(
+        AppStrings.isArabic
+            ? 'تعذر تحميل الملف'
+            : 'Could not download the file',
+      );
+      return;
+    }
+
+    try {
+      final path = await saveDownloadedBytes(
+        bytes: bytes,
+        fileName: fileName,
+        mimeType: _mimeType(fileName),
+        dialogTitle:
+        AppStrings.isArabic ? 'حفظ التقرير الطبي' : 'Save medical report',
+      );
+
+      if (path == null) {
+        // المستخدم أغلق نافذة الحفظ على الهاتف أو سطح المكتب.
+        return;
+      }
+
+      // على Chrome يبدأ التنزيل مباشرة ولا يوجد مسار محلي يمكن فتحه.
+      if (path == webDownloadCompletedMarker) {
+        _showMessage(
+          AppStrings.isArabic ? 'تم تنزيل التقرير' : 'Report downloaded',
+        );
+        return;
+      }
+
+      if (openAfterSaving) {
+        final result = await OpenFilex.open(path);
+
+        if (result.type != ResultType.done) {
+          _showMessage(
+            AppStrings.isArabic
+                ? 'تم حفظ الملف، لكن تعذر فتحه تلقائياً'
+                : 'The file was saved but could not be opened automatically',
+          );
+          return;
+        }
+      }
+
+      _showMessage(
+        openAfterSaving
+            ? (AppStrings.isArabic ? 'تم فتح التقرير' : 'Report opened')
+            : (AppStrings.isArabic
+            ? 'تم تنزيل التقرير'
+            : 'Report downloaded'),
+      );
+    } catch (_) {
+      _showMessage(
+        AppStrings.isArabic
+            ? 'تعذر حفظ التقرير'
+            : 'Could not save the report',
+      );
+    }
+  }
+
+  Future<void> _viewFile({
+    required String fileUrl,
+    required String fileName,
+  }) async {
+    final cleanUrl = fileUrl.trim();
+
+    if (cleanUrl.isEmpty) {
+      _showMessage(
+        AppStrings.isArabic ? 'لا يوجد ملف مرفق' : 'No attached file',
+      );
+      return;
+    }
+
+    if (cleanUrl.startsWith('data:')) {
+      final bytes = _decodeDataFile(cleanUrl);
+
+      if (bytes == null || bytes.isEmpty) {
+        _showMessage(
+          AppStrings.isArabic ? 'تعذر فتح الملف' : 'Could not open the file',
+        );
+        return;
+      }
+
+      if (_isImageFile(fileName, cleanUrl)) {
+        if (!mounted) return;
+
+        await showDialog<void>(
+          context: context,
+          builder: (dialogContext) => Dialog(
+            insetPadding: const EdgeInsets.all(18),
+            child: Stack(
+              children: [
+                Container(
+                  constraints: const BoxConstraints(
+                    maxWidth: 900,
+                    maxHeight: 750,
+                  ),
+                  color: Colors.black,
+                  child: InteractiveViewer(
+                    minScale: 0.5,
+                    maxScale: 5,
+                    child: Center(
+                      child: Image.memory(
+                        bytes,
+                        fit: BoxFit.contain,
+                      ),
+                    ),
+                  ),
+                ),
+                PositionedDirectional(
+                  top: 6,
+                  end: 6,
+                  child: IconButton.filled(
+                    onPressed: () => Navigator.pop(dialogContext),
+                    icon: const Icon(Icons.close),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+        return;
+      }
+
+      await _saveFile(
+        fileUrl: cleanUrl,
+        fileName: fileName,
+        openAfterSaving: true,
+      );
+      return;
+    }
+
+    final uri = Uri.tryParse(cleanUrl);
+
+    if (uri != null &&
+        await canLaunchUrl(uri) &&
+        await launchUrl(uri, mode: LaunchMode.externalApplication)) {
+      return;
+    }
+
+    await _saveFile(
+      fileUrl: cleanUrl,
+      fileName: fileName,
+      openAfterSaving: true,
+    );
+  }
+
   Widget _buildLoading() {
     return const Center(
       child: CircularProgressIndicator(color: primary),
@@ -443,6 +696,17 @@ class _ManageMedicalRecordsScreenState
             _textValue(record, 'status'),
           );
 
+          final String fileUrl = _textValue(
+            record,
+            'fileUrl',
+            fallback: _textValue(record, 'FileUrl'),
+          );
+
+          final String fileName = _fileNameFromRecord(
+            title: title,
+            fileUrl: fileUrl,
+          );
+
           return _MedicalRecordCard(
             key: ValueKey<int>(recordId),
             title: title,
@@ -451,10 +715,24 @@ class _ManageMedicalRecordsScreenState
             doctorId: doctorId,
             recordDate: recordDate,
             status: status,
+            fileName: fileName,
+            hasFile: fileUrl.isNotEmpty,
             recordId: recordId,
             textDirection: textDirection,
             textAlign: textAlign,
             crossAxisAlignment: crossAxisAlignment,
+            onView: fileUrl.isEmpty
+                ? null
+                : () => _viewFile(
+              fileUrl: fileUrl,
+              fileName: fileName,
+            ),
+            onDownload: fileUrl.isEmpty
+                ? null
+                : () => _saveFile(
+              fileUrl: fileUrl,
+              fileName: fileName,
+            ),
             onDelete: recordId > 0 ? () => confirmDelete(recordId) : null,
           );
         },
@@ -472,10 +750,14 @@ class _MedicalRecordCard extends StatelessWidget {
     required this.doctorId,
     required this.recordDate,
     required this.status,
+    required this.fileName,
+    required this.hasFile,
     required this.recordId,
     required this.textDirection,
     required this.textAlign,
     required this.crossAxisAlignment,
+    required this.onView,
+    required this.onDownload,
     required this.onDelete,
   });
 
@@ -487,10 +769,14 @@ class _MedicalRecordCard extends StatelessWidget {
   final String doctorId;
   final String recordDate;
   final String status;
+  final String fileName;
+  final bool hasFile;
   final int recordId;
   final TextDirection textDirection;
   final TextAlign textAlign;
   final CrossAxisAlignment crossAxisAlignment;
+  final VoidCallback? onView;
+  final VoidCallback? onDownload;
   final VoidCallback? onDelete;
 
   @override
@@ -554,6 +840,34 @@ class _MedicalRecordCard extends StatelessWidget {
                   textDirection: textDirection,
                   textAlign: textAlign,
                 ),
+                if (hasFile) ...[
+                  const SizedBox(height: 6),
+                  Row(
+                    textDirection: textDirection,
+                    children: [
+                      const Icon(
+                        Icons.attach_file,
+                        size: 17,
+                        color: Colors.blue,
+                      ),
+                      const SizedBox(width: 4),
+                      Expanded(
+                        child: Text(
+                          fileName,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          textDirection: TextDirection.ltr,
+                          textAlign: textAlign,
+                          style: const TextStyle(
+                            color: Colors.blue,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
                 if (recordDate.isNotEmpty) ...[
                   const SizedBox(height: 6),
                   _RecordText(
@@ -579,13 +893,35 @@ class _MedicalRecordCard extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 8),
-          IconButton(
-            tooltip: AppStrings.delete,
-            icon: const Icon(
-              Icons.delete,
-              color: Colors.red,
-            ),
-            onPressed: onDelete,
+          Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              IconButton(
+                tooltip: AppStrings.isArabic ? 'عرض التقرير' : 'View report',
+                onPressed: onView,
+                icon: Icon(
+                  Icons.visibility,
+                  color: hasFile ? primary : Colors.grey,
+                ),
+              ),
+              IconButton(
+                tooltip:
+                AppStrings.isArabic ? 'تنزيل التقرير' : 'Download report',
+                onPressed: onDownload,
+                icon: Icon(
+                  Icons.download,
+                  color: hasFile ? Colors.blue : Colors.grey,
+                ),
+              ),
+              IconButton(
+                tooltip: AppStrings.delete,
+                icon: const Icon(
+                  Icons.delete,
+                  color: Colors.red,
+                ),
+                onPressed: onDelete,
+              ),
+            ],
           ),
         ],
       ),

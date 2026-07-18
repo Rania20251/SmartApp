@@ -47,8 +47,9 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
 
-    // عرض الكاش أولاً بدل إجبار السيرفر على تحميل جديد عند كل دخول.
-    doctorsFuture = ApiService.getDoctors(forceRefresh: false).then((data) {
+    // نطلب بيانات الأطباء مرة واحدة من السيرفر عند فتح الهوم
+    // حتى لا تبقى صور fallback القديمة محفوظة في الكاش.
+    doctorsFuture = ApiService.getDoctors(forceRefresh: true).then((data) {
       cachedDoctors = List<dynamic>.from(data);
       return cachedDoctors;
     });
@@ -487,15 +488,33 @@ class _HomeScreenState extends State<HomeScreen> {
       return 'assets/images/profile.jpg';
     }
 
-    final image = (
-        doctor['image'] ??
-            doctor['Image'] ??
-            doctor['doctorImage'] ??
-            doctor['DoctorImage'] ??
-            ''
-    ).toString().trim();
+    final possibleImages = <dynamic>[
+      doctor['image'],
+      doctor['Image'],
+      doctor['doctorImage'],
+      doctor['DoctorImage'],
+      doctor['imageUrl'],
+      doctor['ImageUrl'],
+      doctor['profileImage'],
+      doctor['ProfileImage'],
+      doctor['photo'],
+      doctor['Photo'],
+    ];
 
-    if (image.isEmpty || image == 'string') {
+    String image = '';
+
+    for (final value in possibleImages) {
+      final candidate = value?.toString().trim() ?? '';
+
+      if (candidate.isNotEmpty &&
+          candidate.toLowerCase() != 'string' &&
+          candidate.toLowerCase() != 'null') {
+        image = candidate;
+        break;
+      }
+    }
+
+    if (image.isEmpty) {
       return 'assets/images/profile.jpg';
     }
 
@@ -503,15 +522,49 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   int getDoctorSpecialtyId(dynamic doctor) {
-    final directId = int.tryParse(doctor['specialtyId']?.toString() ?? '');
-    if (directId != null) return directId;
+    if (doctor is! Map) return 0;
 
-    final nav = doctor['specialtyNavigation'];
-    if (nav is Map<String, dynamic>) {
-      return int.tryParse(nav['specialtyId']?.toString() ?? '') ?? 0;
+    final rawId =
+        doctor['specialtyId'] ??
+            doctor['SpecialtyId'] ??
+            doctor['id'] ??
+            doctor['Id'];
+
+    final directId =
+    rawId is int ? rawId : int.tryParse(rawId?.toString() ?? '');
+
+    if (directId != null && directId > 0) return directId;
+
+    final nav =
+        doctor['specialtyNavigation'] ?? doctor['SpecialtyNavigation'];
+
+    if (nav is Map) {
+      final nested =
+          nav['specialtyId'] ??
+              nav['SpecialtyId'] ??
+              nav['id'] ??
+              nav['Id'];
+
+      return nested is int
+          ? nested
+          : int.tryParse(nested?.toString() ?? '') ?? 0;
     }
 
     return 0;
+  }
+
+  int getDoctorId(dynamic doctor) {
+    if (doctor is! Map) return 0;
+
+    final rawId =
+        doctor['doctorId'] ??
+            doctor['DoctorId'] ??
+            doctor['id'] ??
+            doctor['Id'];
+
+    return rawId is int
+        ? rawId
+        : int.tryParse(rawId?.toString() ?? '') ?? 0;
   }
 
   String normalizeText(String text) {
@@ -864,18 +917,20 @@ class _HomeScreenState extends State<HomeScreen> {
                       return Column(
                         children: List.generate(filteredDoctors.length, (index) {
                           final doctor = filteredDoctors[index];
-                          final doctorId = int.tryParse(
-                            doctor['doctorId']?.toString() ?? '0',
-                          ) ??
-                              0;
+                          final doctorId = getDoctorId(doctor);
 
                           final specialtyId = getDoctorSpecialtyId(doctor);
                           final specialtyName =
                               specialtyNames[specialtyId] ?? AppStrings.specialist;
 
                           final imagePath = getDoctorImage(doctor);
-                          final originalName =
-                              doctor['fullName']?.toString() ?? AppStrings.doctor;
+                          final originalName = (
+                              doctor['fullName'] ??
+                                  doctor['FullName'] ??
+                                  doctor['name'] ??
+                                  doctor['Name'] ??
+                                  AppStrings.doctor
+                          ).toString();
 
                           return RepaintBoundary(
                             child: DoctorCard(
@@ -995,6 +1050,7 @@ class _DoctorCardState extends State<DoctorCard> {
             width: 60,
             height: 60,
             fit: BoxFit.cover,
+            alignment: Alignment.topCenter,
           ),
         );
       } catch (_) {
@@ -1003,27 +1059,49 @@ class _DoctorCardState extends State<DoctorCard> {
     }
 
     if (image.startsWith('http://') || image.startsWith('https://')) {
-      return ClipOval(
-        child: CachedNetworkImage(
-          imageUrl: image,
-          key: ValueKey(image),
+      // على Flutter Web قد يفشل CachedNetworkImage مع صور السيرفر
+      // بسبب CORS، بينما Image.network باستخدام عنصر HTML يعرضها مباشرة.
+      return Container(
+        width: 60,
+        height: 60,
+        decoration: const BoxDecoration(
+          shape: BoxShape.circle,
+          color: Color(0xFFEDE7FF),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: Image.network(
+          image,
+          key: ValueKey<String>(image),
           width: 60,
           height: 60,
           fit: BoxFit.cover,
-          fadeInDuration: Duration.zero,
-          placeholder: (_, __) => defaultImage(),
-          errorWidget: (_, __, ___) => defaultImage(),
+          alignment: Alignment.topCenter,
+          gaplessPlayback: true,
+          webHtmlElementStrategy: WebHtmlElementStrategy.prefer,
+          loadingBuilder: (context, child, loadingProgress) {
+            if (loadingProgress == null) return child;
+            return defaultImage();
+          },
+          errorBuilder: (_, __, ___) => defaultImage(),
         ),
       );
     }
 
     if (image.startsWith('assets/')) {
-      return ClipOval(
+      return Container(
+        width: 60,
+        height: 60,
+        decoration: const BoxDecoration(
+          shape: BoxShape.circle,
+          color: Color(0xFFEDE7FF),
+        ),
+        clipBehavior: Clip.antiAlias,
         child: Image.asset(
           image,
           width: 60,
           height: 60,
           fit: BoxFit.cover,
+          alignment: Alignment.topCenter,
           errorBuilder: (_, __, ___) => defaultImage(),
         ),
       );
@@ -1033,12 +1111,20 @@ class _DoctorCardState extends State<DoctorCard> {
   }
 
   Widget defaultImage() {
-    return ClipOval(
+    return Container(
+      width: 60,
+      height: 60,
+      decoration: const BoxDecoration(
+        shape: BoxShape.circle,
+        color: Color(0xFFEDE7FF),
+      ),
+      clipBehavior: Clip.antiAlias,
       child: Image.asset(
         'assets/images/profile.jpg',
         width: 60,
         height: 60,
         fit: BoxFit.cover,
+        alignment: Alignment.topCenter,
       ),
     );
   }
@@ -1049,8 +1135,8 @@ class _DoctorCardState extends State<DoctorCard> {
 
     return InkWell(
       borderRadius: BorderRadius.circular(20),
-      onTap: () {
-        Navigator.push(
+      onTap: () async {
+        await Navigator.push(
           context,
           MaterialPageRoute(
             builder: (_) => DoctorDetailsScreen(
@@ -1158,8 +1244,8 @@ class _DoctorCardState extends State<DoctorCard> {
               width: 74,
               height: 38,
               child: ElevatedButton(
-                onPressed: () {
-                  Navigator.push(
+                onPressed: () async {
+                  await Navigator.push(
                     context,
                     MaterialPageRoute(
                       builder: (_) => DoctorDetailsScreen(

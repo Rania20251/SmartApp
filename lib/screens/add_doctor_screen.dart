@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -266,6 +267,7 @@ class _AddDoctorScreenState extends State<AddDoctorScreen> {
       selectedImageBytes = bytes;
       selectedImageName =
       picked.name.isNotEmpty ? picked.name : 'doctor.jpg';
+      imageUrl = '';
     });
   }
 
@@ -331,7 +333,8 @@ class _AddDoctorScreenState extends State<AddDoctorScreen> {
         image: uploadedImageUrl,
       );
 
-      // حتى تظهر صورة الطبيب الجديدة عند الرجوع مباشرة.
+      // نمسح كاش الأطباء بعد نجاح الإضافة فقط، حتى تجلب شاشة الإدارة
+      // الطبيب الجديد وصورته من السيرفر فور الرجوع.
       ApiService.clearDoctorsCache();
 
       if (!mounted) return;
@@ -409,21 +412,99 @@ class _AddDoctorScreenState extends State<AddDoctorScreen> {
         '';
   }
 
-  ImageProvider? get previewImage {
+  Widget buildDoctorImagePreview() {
     final bytes = selectedImageBytes;
+    final image = imageUrl.trim();
 
-    if (bytes != null) return MemoryImage(bytes);
-
-    if (imageUrl.startsWith('http://') ||
-        imageUrl.startsWith('https://')) {
-      return NetworkImage(imageUrl);
+    if (bytes != null && bytes.isNotEmpty) {
+      return ClipOval(
+        child: Image.memory(
+          bytes,
+          width: 104,
+          height: 104,
+          fit: BoxFit.cover,
+          alignment: Alignment.topCenter,
+          gaplessPlayback: true,
+        ),
+      );
     }
 
-    if (imageUrl.startsWith('assets/')) {
-      return AssetImage(imageUrl);
+    if (image.startsWith('data:image')) {
+      try {
+        final base64Part = image.split(',').last;
+
+        return ClipOval(
+          child: Image.memory(
+            base64Decode(base64Part),
+            width: 104,
+            height: 104,
+            fit: BoxFit.cover,
+            alignment: Alignment.topCenter,
+            gaplessPlayback: true,
+          ),
+        );
+      } catch (_) {
+        return defaultDoctorPreview();
+      }
     }
 
-    return null;
+    if (image.startsWith('http://') || image.startsWith('https://')) {
+      return Container(
+        width: 104,
+        height: 104,
+        decoration: const BoxDecoration(
+          shape: BoxShape.circle,
+          color: lightPurple,
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: Image.network(
+          image,
+          width: 104,
+          height: 104,
+          fit: BoxFit.cover,
+          alignment: Alignment.topCenter,
+          gaplessPlayback: true,
+          webHtmlElementStrategy: WebHtmlElementStrategy.prefer,
+          loadingBuilder: (context, child, loadingProgress) {
+            if (loadingProgress == null) return child;
+            return defaultDoctorPreview();
+          },
+          errorBuilder: (_, __, ___) => defaultDoctorPreview(),
+        ),
+      );
+    }
+
+    if (image.startsWith('assets/')) {
+      return ClipOval(
+        child: Image.asset(
+          image,
+          width: 104,
+          height: 104,
+          fit: BoxFit.cover,
+          alignment: Alignment.topCenter,
+          errorBuilder: (_, __, ___) => defaultDoctorPreview(),
+        ),
+      );
+    }
+
+    return defaultDoctorPreview();
+  }
+
+  Widget defaultDoctorPreview() {
+    return Container(
+      width: 104,
+      height: 104,
+      decoration: const BoxDecoration(
+        shape: BoxShape.circle,
+        color: lightPurple,
+      ),
+      alignment: Alignment.center,
+      child: const Icon(
+        Icons.local_hospital,
+        size: 55,
+        color: primary,
+      ),
+    );
   }
 
   List<DropdownMenuItem<int>> specialtyItems() {
@@ -486,7 +567,6 @@ class _AddDoctorScreenState extends State<AddDoctorScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final image = previewImage;
     final items = specialtyItems();
 
     final validSelectedValue = items.any(
@@ -514,17 +594,10 @@ class _AddDoctorScreenState extends State<AddDoctorScreen> {
               children: [
                 const SizedBox(height: 20),
                 Center(
-                  child: CircleAvatar(
-                    radius: 52,
-                    backgroundColor: lightPurple,
-                    backgroundImage: image,
-                    child: image == null
-                        ? const Icon(
-                      Icons.local_hospital,
-                      size: 55,
-                      color: primary,
-                    )
-                        : null,
+                  child: SizedBox(
+                    width: 104,
+                    height: 104,
+                    child: buildDoctorImagePreview(),
                   ),
                 ),
                 const SizedBox(height: 12),

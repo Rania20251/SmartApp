@@ -2,7 +2,6 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../language/app_strings.dart';
@@ -175,38 +174,67 @@ class _DoctorDetailsScreenState extends State<DoctorDetailsScreen> {
 
   Widget doctorImage() {
     if (imageBytes != null) {
-      return ClipOval(
+      return Container(
+        width: 96,
+        height: 96,
+        decoration: const BoxDecoration(
+          shape: BoxShape.circle,
+          color: Color(0xFFEDE7FF),
+        ),
+        clipBehavior: Clip.antiAlias,
         child: Image.memory(
           imageBytes!,
           width: 96,
           height: 96,
           fit: BoxFit.cover,
+          alignment: Alignment.topCenter,
           gaplessPlayback: true,
         ),
       );
     }
 
     if (safeImage.startsWith('http://') || safeImage.startsWith('https://')) {
-      return ClipOval(
-        child: CachedNetworkImage(
-          imageUrl: safeImage,
+      return Container(
+        width: 96,
+        height: 96,
+        decoration: const BoxDecoration(
+          shape: BoxShape.circle,
+          color: Color(0xFFEDE7FF),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: Image.network(
+          safeImage,
+          key: ValueKey<String>(safeImage),
           width: 96,
           height: 96,
           fit: BoxFit.cover,
-          fadeInDuration: Duration.zero,
-          placeholder: (_, __) => defaultDoctorImage(),
-          errorWidget: (_, __, ___) => defaultDoctorImage(),
+          alignment: Alignment.topCenter,
+          gaplessPlayback: true,
+          webHtmlElementStrategy: WebHtmlElementStrategy.prefer,
+          loadingBuilder: (context, child, loadingProgress) {
+            if (loadingProgress == null) return child;
+            return defaultDoctorImage();
+          },
+          errorBuilder: (_, __, ___) => defaultDoctorImage(),
         ),
       );
     }
 
     if (safeImage.startsWith('assets/')) {
-      return ClipOval(
+      return Container(
+        width: 96,
+        height: 96,
+        decoration: const BoxDecoration(
+          shape: BoxShape.circle,
+          color: Color(0xFFEDE7FF),
+        ),
+        clipBehavior: Clip.antiAlias,
         child: Image.asset(
           safeImage,
           width: 96,
           height: 96,
           fit: BoxFit.cover,
+          alignment: Alignment.topCenter,
           errorBuilder: (_, __, ___) => defaultDoctorImage(),
         ),
       );
@@ -216,12 +244,20 @@ class _DoctorDetailsScreenState extends State<DoctorDetailsScreen> {
   }
 
   Widget defaultDoctorImage() {
-    return ClipOval(
+    return Container(
+      width: 96,
+      height: 96,
+      decoration: const BoxDecoration(
+        shape: BoxShape.circle,
+        color: Color(0xFFEDE7FF),
+      ),
+      clipBehavior: Clip.antiAlias,
       child: Image.asset(
         'assets/images/profile.jpg',
         width: 96,
         height: 96,
         fit: BoxFit.cover,
+        alignment: Alignment.topCenter,
       ),
     );
   }
@@ -241,9 +277,15 @@ class _DoctorDetailsScreenState extends State<DoctorDetailsScreen> {
 
     final patientId = UserSession.userId ?? 0;
 
-    if (patientId <= 0) {
+    if (patientId <= 0 || widget.doctorId <= 0) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(AppStrings.appointmentFailed)),
+        SnackBar(
+          content: Text(
+            AppStrings.isArabic
+                ? 'تعذر تحديد المريض أو الطبيب، أعيدي فتح الصفحة.'
+                : 'Could not identify the patient or doctor. Reopen the page.',
+          ),
+        ),
       );
       return;
     }
@@ -259,17 +301,18 @@ class _DoctorDetailsScreenState extends State<DoctorDetailsScreen> {
         patientId: patientId,
         doctorId: widget.doctorId,
         appointmentDate: appointmentDate,
+        doctorName: widget.name,
+        specialtyName: widget.specialty,
+        doctorImage: widget.imagePath,
       );
 
       if (!mounted) return;
 
-      setState(() {
-        isBooked = true;
-      });
-
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(AppStrings.appointmentBooked)),
       );
+
+      Navigator.pop(context, true);
     } on AppointmentSlotTakenException {
       if (!mounted) return;
 

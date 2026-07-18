@@ -36,10 +36,31 @@ class _DoctorsScreenState extends State<DoctorsScreen> {
   }
 
   String getDoctorImage(dynamic doctor) {
-    final image = doctor['image']?.toString().trim() ?? '';
+    if (doctor is! Map) {
+      return 'assets/images/profile.jpg';
+    }
 
-    if (image.isNotEmpty && image != 'string') {
-      return image;
+    final possibleImages = <dynamic>[
+      doctor['image'],
+      doctor['Image'],
+      doctor['doctorImage'],
+      doctor['DoctorImage'],
+      doctor['imageUrl'],
+      doctor['ImageUrl'],
+      doctor['profileImage'],
+      doctor['ProfileImage'],
+      doctor['photo'],
+      doctor['Photo'],
+    ];
+
+    for (final value in possibleImages) {
+      final image = value?.toString().trim() ?? '';
+
+      if (image.isNotEmpty &&
+          image.toLowerCase() != 'string' &&
+          image.toLowerCase() != 'null') {
+        return ApiService.fixImageUrl(image);
+      }
     }
 
     return 'assets/images/profile.jpg';
@@ -516,12 +537,21 @@ class DoctorListCard extends StatelessWidget {
       try {
         final base64Part = image.split(',').last;
 
-        return ClipOval(
+        return Container(
+          width: 60,
+          height: 60,
+          decoration: const BoxDecoration(
+            shape: BoxShape.circle,
+            color: Color(0xFFEDE7FF),
+          ),
+          clipBehavior: Clip.antiAlias,
           child: Image.memory(
             base64Decode(base64Part),
             width: 60,
             height: 60,
             fit: BoxFit.cover,
+            alignment: Alignment.topCenter,
+            gaplessPlayback: true,
           ),
         );
       } catch (_) {
@@ -530,26 +560,47 @@ class DoctorListCard extends StatelessWidget {
     }
 
     if (image.startsWith('http://') || image.startsWith('https://')) {
-      return ClipOval(
-        child: CachedNetworkImage(
-          imageUrl: image,
+      return Container(
+        width: 60,
+        height: 60,
+        decoration: const BoxDecoration(
+          shape: BoxShape.circle,
+          color: Color(0xFFEDE7FF),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: Image.network(
+          image,
+          key: ValueKey<String>(image),
           width: 60,
           height: 60,
           fit: BoxFit.cover,
-          fadeInDuration: Duration.zero,
-          placeholder: (_, __) => defaultImage(),
-          errorWidget: (_, __, ___) => defaultImage(),
+          alignment: Alignment.topCenter,
+          gaplessPlayback: true,
+          webHtmlElementStrategy: WebHtmlElementStrategy.prefer,
+          loadingBuilder: (context, child, loadingProgress) {
+            if (loadingProgress == null) return child;
+            return defaultImage();
+          },
+          errorBuilder: (_, __, ___) => defaultImage(),
         ),
       );
     }
 
     if (image.startsWith('assets/')) {
-      return ClipOval(
+      return Container(
+        width: 60,
+        height: 60,
+        decoration: const BoxDecoration(
+          shape: BoxShape.circle,
+          color: Color(0xFFEDE7FF),
+        ),
+        clipBehavior: Clip.antiAlias,
         child: Image.asset(
           image,
           width: 60,
           height: 60,
           fit: BoxFit.cover,
+          alignment: Alignment.topCenter,
           errorBuilder: (_, __, ___) => defaultImage(),
         ),
       );
@@ -559,12 +610,20 @@ class DoctorListCard extends StatelessWidget {
   }
 
   Widget defaultImage() {
-    return ClipOval(
+    return Container(
+      width: 60,
+      height: 60,
+      decoration: const BoxDecoration(
+        shape: BoxShape.circle,
+        color: Color(0xFFEDE7FF),
+      ),
+      clipBehavior: Clip.antiAlias,
       child: Image.asset(
         'assets/images/profile.jpg',
         width: 60,
         height: 60,
         fit: BoxFit.cover,
+        alignment: Alignment.topCenter,
       ),
     );
   }

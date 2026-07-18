@@ -5,6 +5,7 @@ class UserSession {
 
   static int? userId;
   static String? fullName;
+  static String? fullNameAr;
   static String? email;
   static String? phoneNumber;
   static String? address;
@@ -15,6 +16,7 @@ class UserSession {
 
   static const String _userIdKey = 'userId';
   static const String _fullNameKey = 'fullName';
+  static const String _fullNameArKey = 'fullNameAr';
   static const String _emailKey = 'email';
   static const String _phoneNumberKey = 'phoneNumber';
   static const String _addressKey = 'address';
@@ -85,6 +87,13 @@ class UserSession {
         )?.toString().trim() ??
             '';
 
+    final newFullNameAr =
+        _readValue(
+          user,
+          ['fullNameAr', 'FullNameAr'],
+        )?.toString().trim() ??
+            '';
+
     final newEmail =
         _readValue(
           user,
@@ -152,6 +161,7 @@ class UserSession {
 
     userId = parsedUserId;
     fullName = newFullName;
+    fullNameAr = newFullNameAr;
     email = newEmail;
     phoneNumber = newPhoneNumber;
     address = newAddress;
@@ -165,6 +175,10 @@ class UserSession {
       prefs.setString(
         _fullNameKey,
         newFullName,
+      ),
+      prefs.setString(
+        _fullNameArKey,
+        newFullNameAr,
       ),
       prefs.setString(_emailKey, newEmail),
       prefs.setString(
@@ -207,6 +221,8 @@ class UserSession {
     userId = savedUserId;
     fullName =
         prefs.getString(_fullNameKey) ?? '';
+    fullNameAr =
+        prefs.getString(_fullNameArKey) ?? '';
     email =
         prefs
             .getString(_emailKey)
@@ -275,6 +291,7 @@ class UserSession {
 
   static Future<void> updateStoredUser({
     String? newFullName,
+    String? newFullNameAr,
     String? newEmail,
     String? newPhoneNumber,
     String? newAddress,
@@ -293,6 +310,15 @@ class UserSession {
       await prefs.setString(
         _fullNameKey,
         fullName!,
+      );
+    }
+
+    if (newFullNameAr != null) {
+      fullNameAr = newFullNameAr.trim();
+
+      await prefs.setString(
+        _fullNameArKey,
+        fullNameAr!,
       );
     }
 
@@ -400,6 +426,7 @@ class UserSession {
     await Future.wait([
       prefs.remove(_userIdKey),
       prefs.remove(_fullNameKey),
+      prefs.remove(_fullNameArKey),
       prefs.remove(_emailKey),
       prefs.remove(_phoneNumberKey),
       prefs.remove(_addressKey),
@@ -413,6 +440,7 @@ class UserSession {
   static void _clearMemory() {
     userId = null;
     fullName = null;
+    fullNameAr = null;
     email = null;
     phoneNumber = null;
     address = null;

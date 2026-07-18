@@ -1,7 +1,5 @@
-// Fixed linked appointments version
-// Keeps same UI, but returns true after booking so ScheduleScreen refreshes immediately.
-
 import 'package:flutter/material.dart';
+
 import '../language/app_strings.dart';
 import '../services/api_service.dart';
 import '../services/user_session.dart';
@@ -14,6 +12,8 @@ class BookAppointmentScreen extends StatefulWidget {
 }
 
 class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
+  static const Color primary = Color(0xFF5B2EFF);
+
   int? selectedDoctorId;
   DateTime? selectedDate;
   TimeOfDay? selectedTime;
@@ -27,18 +27,46 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
     doctorsFuture = ApiService.getDoctors(forceRefresh: true);
   }
 
+  int doctorIdOf(dynamic doctor) {
+    if (doctor is! Map) return 0;
+
+    final rawId =
+        doctor['doctorId'] ??
+            doctor['DoctorId'] ??
+            doctor['id'] ??
+            doctor['Id'];
+
+    return rawId is int
+        ? rawId
+        : int.tryParse(rawId?.toString() ?? '') ?? 0;
+  }
+
+  String valueOf(dynamic source, List<String> keys, String fallback) {
+    if (source is! Map) return fallback;
+
+    for (final key in keys) {
+      final value = source[key];
+      if (value != null && value.toString().trim().isNotEmpty) {
+        return value.toString().trim();
+      }
+    }
+
+    return fallback;
+  }
+
   Future<void> pickDate() async {
+    final now = DateTime.now();
+    final firstDate = DateTime(now.year, now.month, now.day);
+
     final date = await showDatePicker(
       context: context,
-      initialDate: DateTime.now().add(const Duration(days: 1)),
-      firstDate: DateTime.now(),
-      lastDate: DateTime(2030),
+      initialDate: firstDate.add(const Duration(days: 1)),
+      firstDate: firstDate,
+      lastDate: DateTime(2030, 12, 31),
     );
 
-    if (date != null) {
-      setState(() {
-        selectedDate = date;
-      });
+    if (date != null && mounted) {
+      setState(() => selectedDate = date);
     }
   }
 
@@ -48,21 +76,20 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
       initialTime: TimeOfDay.now(),
     );
 
-    if (time != null) {
-      setState(() {
-        selectedTime = time;
-      });
+    if (time != null && mounted) {
+      setState(() => selectedTime = time);
     }
   }
 
   void showMessage(String message) {
     if (!mounted) return;
+
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(message)),
     );
   }
 
-  DateTime getFinalAppointmentDate() {
+  DateTime finalAppointmentDate() {
     return DateTime(
       selectedDate!.year,
       selectedDate!.month,
@@ -72,18 +99,30 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
     );
   }
 
-  String formatSelectedDate() {
+  String formattedDate() {
     if (selectedDate == null) return AppStrings.selectDate;
 
-    final year = selectedDate!.year;
-    final month = selectedDate!.month.toString().padLeft(2, '0');
-    final day = selectedDate!.day.toString().padLeft(2, '0');
-
-    return '$year-$month-$day';
+    return '${selectedDate!.year}-'
+        '${selectedDate!.month.toString().padLeft(2, '0')}-'
+        '${selectedDate!.day.toString().padLeft(2, '0')}';
   }
 
   Future<void> submitAppointment() async {
-    if (selectedDoctorId == null) {
+    if (isLoading) return;
+
+    final patientId = UserSession.userId ?? 0;
+    final doctorId = selectedDoctorId ?? 0;
+
+    if (patientId <= 0) {
+      showMessage(
+        AppStrings.isArabic
+            ? 'يرجى تسجيل الدخول أولاً.'
+            : 'Please sign in first.',
+      );
+      return;
+    }
+
+    if (doctorId <= 0) {
       showMessage(AppStrings.pleaseSelectDoctor);
       return;
     }
@@ -98,41 +137,30 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
       return;
     }
 
-    if (isLoading) return;
     setState(() => isLoading = true);
 
     try {
-      final patientId = UserSession.userId ?? 0;
-
-      if (patientId <= 0) {
-        throw Exception('Invalid patient id');
-      }
-
       await ApiService.bookAppointment(
         patientId: patientId,
-        doctorId: selectedDoctorId!,
-        appointmentDate: getFinalAppointmentDate(),
+        doctorId: doctorId,
+        appointmentDate: finalAppointmentDate(),
       );
 
       if (!mounted) return;
 
       Navigator.pop(context, true);
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(AppStrings.appointmentBooked)),
-      );
     } on AppointmentSlotTakenException {
-      if (mounted) {
-        showMessage(
-          AppStrings.isArabic
-              ? 'هذا الموعد غير متاح، اختاري وقتًا آخر.'
-              : 'This appointment is unavailable. Please choose another time.',
-        );
-      }
+      showMessage(
+        AppStrings.isArabic
+            ? 'هذا الموعد غير متاح، اختاري وقتاً آخر.'
+            : 'This appointment is unavailable. Choose another time.',
+      );
     } catch (_) {
-      if (mounted) {
-        showMessage(AppStrings.appointmentFailed);
-      }
+      showMessage(
+        AppStrings.isArabic
+            ? 'تعذر حجز الموعد، حاولي مرة أخرى.'
+            : 'Could not book the appointment. Please try again.',
+      );
     } finally {
       if (mounted) {
         setState(() => isLoading = false);
@@ -142,10 +170,9 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
 
   @override
   Widget build(BuildContext context) {
-    const primary = Color(0xFF5B2EFF);
-
     return Directionality(
-      textDirection: AppStrings.isArabic ? TextDirection.rtl : TextDirection.ltr,
+      textDirection:
+      AppStrings.isArabic ? TextDirection.rtl : TextDirection.ltr,
       child: Scaffold(
         backgroundColor: const Color(0xFFF7F8FC),
         appBar: AppBar(
@@ -154,26 +181,26 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
           foregroundColor: Colors.black,
           elevation: 0,
         ),
-        body: Padding(
-          padding: const EdgeInsets.all(20),
-          child: FutureBuilder<List<dynamic>>(
-            future: doctorsFuture,
-            builder: (context, snapshot) {
-              if (snapshot.connectionState == ConnectionState.waiting) {
-                return const Center(child: CircularProgressIndicator());
-              }
+        body: FutureBuilder<List<dynamic>>(
+          future: doctorsFuture,
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(
+                child: CircularProgressIndicator(color: primary),
+              );
+            }
 
-              if (snapshot.hasError) {
-                return Center(child: Text(AppStrings.failedLoadDoctors));
-              }
+            final doctors = (snapshot.data ?? <dynamic>[])
+                .where((doctor) => doctorIdOf(doctor) > 0)
+                .toList();
 
-              final doctors = snapshot.data ?? [];
+            if (doctors.isEmpty) {
+              return Center(child: Text(AppStrings.noDoctorsFound));
+            }
 
-              if (doctors.isEmpty) {
-                return Center(child: Text(AppStrings.noDoctorsFound));
-              }
-
-              return Center(
+            return Center(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(20),
                 child: Container(
                   width: 390,
                   padding: const EdgeInsets.all(22),
@@ -209,38 +236,41 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
                           ),
                         ),
                         items: doctors.map<DropdownMenuItem<int>>((doctor) {
-                          final doctorId = int.tryParse(
-                            doctor['doctorId']?.toString() ??
-                                doctor['DoctorId']?.toString() ??
-                                '0',
-                          ) ??
-                              0;
-
-                          final fullName = doctor['fullName']?.toString() ??
-                              doctor['FullName']?.toString() ??
-                              AppStrings.doctor;
-
-                          final specialty = doctor['specialty']?.toString() ??
-                              doctor['Specialty']?.toString() ??
-                              AppStrings.specialist;
+                          final id = doctorIdOf(doctor);
+                          final name = valueOf(
+                            doctor,
+                            ['fullName', 'FullName', 'name', 'Name'],
+                            AppStrings.doctor,
+                          );
+                          final specialty = valueOf(
+                            doctor,
+                            [
+                              'specialty',
+                              'Specialty',
+                              'specialtyName',
+                              'SpecialtyName',
+                            ],
+                            AppStrings.specialist,
+                          );
 
                           return DropdownMenuItem<int>(
-                            value: doctorId,
+                            value: id,
                             child: Text(
-                              '$fullName - $specialty',
+                              '${AppStrings.doctorNameByLanguage(name)} - '
+                                  '${AppStrings.specialtyByLanguage(specialty)}',
                               overflow: TextOverflow.ellipsis,
                             ),
                           );
                         }).toList(),
-                        onChanged: (value) {
-                          setState(() {
-                            selectedDoctorId = value;
-                          });
+                        onChanged: isLoading
+                            ? null
+                            : (value) {
+                          setState(() => selectedDoctorId = value);
                         },
                       ),
                       const SizedBox(height: 16),
                       InkWell(
-                        onTap: pickDate,
+                        onTap: isLoading ? null : pickDate,
                         borderRadius: BorderRadius.circular(16),
                         child: Container(
                           width: double.infinity,
@@ -253,14 +283,14 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
                             children: [
                               const Icon(Icons.calendar_month),
                               const SizedBox(width: 12),
-                              Text(formatSelectedDate()),
+                              Text(formattedDate()),
                             ],
                           ),
                         ),
                       ),
                       const SizedBox(height: 16),
                       InkWell(
-                        onTap: pickTime,
+                        onTap: isLoading ? null : pickTime,
                         borderRadius: BorderRadius.circular(16),
                         child: Container(
                           width: double.infinity,
@@ -287,6 +317,7 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
                         width: double.infinity,
                         height: 52,
                         child: ElevatedButton(
+                          onPressed: isLoading ? null : submitAppointment,
                           style: ElevatedButton.styleFrom(
                             backgroundColor: primary,
                             foregroundColor: Colors.white,
@@ -294,10 +325,14 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
                               borderRadius: BorderRadius.circular(16),
                             ),
                           ),
-                          onPressed: isLoading ? null : submitAppointment,
                           child: isLoading
-                              ? const CircularProgressIndicator(
-                            color: Colors.white,
+                              ? const SizedBox(
+                            width: 22,
+                            height: 22,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
                           )
                               : Text(
                             AppStrings.bookNow,
@@ -308,9 +343,9 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
                     ],
                   ),
                 ),
-              );
-            },
-          ),
+              ),
+            );
+          },
         ),
       ),
     );

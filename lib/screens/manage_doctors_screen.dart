@@ -197,19 +197,30 @@ class _ManageDoctorsScreenState extends State<ManageDoctorsScreen> {
       return 'assets/images/profile.jpg';
     }
 
-    final image = (
-        doctor['image'] ??
-            doctor['Image'] ??
-            doctor['doctorImage'] ??
-            doctor['DoctorImage'] ??
-            ''
-    ).toString().trim();
+    final possibleImages = <dynamic>[
+      doctor['image'],
+      doctor['Image'],
+      doctor['doctorImage'],
+      doctor['DoctorImage'],
+      doctor['imageUrl'],
+      doctor['ImageUrl'],
+      doctor['profileImage'],
+      doctor['ProfileImage'],
+      doctor['photo'],
+      doctor['Photo'],
+    ];
 
-    if (image.isEmpty || image.toLowerCase() == 'string') {
-      return 'assets/images/profile.jpg';
+    for (final value in possibleImages) {
+      final image = value?.toString().trim() ?? '';
+
+      if (image.isNotEmpty &&
+          image.toLowerCase() != 'string' &&
+          image.toLowerCase() != 'null') {
+        return ApiService.fixImageUrl(image);
+      }
     }
 
-    return ApiService.fixImageUrl(image);
+    return 'assets/images/profile.jpg';
   }
 
   Widget doctorImage(String imagePath) {
@@ -218,12 +229,21 @@ class _ManageDoctorsScreenState extends State<ManageDoctorsScreen> {
     if (image.startsWith('data:image')) {
       try {
         final base64Part = image.split(',').last;
-        return ClipOval(
+        return Container(
+          width: 60,
+          height: 60,
+          decoration: const BoxDecoration(
+            shape: BoxShape.circle,
+            color: Color(0xFFEDE7FF),
+          ),
+          clipBehavior: Clip.antiAlias,
           child: Image.memory(
             base64Decode(base64Part),
             width: 60,
             height: 60,
             fit: BoxFit.cover,
+            alignment: Alignment.topCenter,
+            gaplessPlayback: true,
           ),
         );
       } catch (_) {
@@ -232,27 +252,47 @@ class _ManageDoctorsScreenState extends State<ManageDoctorsScreen> {
     }
 
     if (image.startsWith('http://') || image.startsWith('https://')) {
-      return ClipOval(
-        child: CachedNetworkImage(
-          imageUrl: image,
-          key: ValueKey(image),
+      return Container(
+        width: 60,
+        height: 60,
+        decoration: const BoxDecoration(
+          shape: BoxShape.circle,
+          color: Color(0xFFEDE7FF),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: Image.network(
+          image,
+          key: ValueKey<String>(image),
           width: 60,
           height: 60,
           fit: BoxFit.cover,
-          fadeInDuration: Duration.zero,
-          placeholder: (_, __) => defaultDoctorImage(),
-          errorWidget: (_, __, ___) => defaultDoctorImage(),
+          alignment: Alignment.topCenter,
+          gaplessPlayback: true,
+          webHtmlElementStrategy: WebHtmlElementStrategy.prefer,
+          loadingBuilder: (context, child, loadingProgress) {
+            if (loadingProgress == null) return child;
+            return defaultDoctorImage();
+          },
+          errorBuilder: (_, __, ___) => defaultDoctorImage(),
         ),
       );
     }
 
     if (image.startsWith('assets/')) {
-      return ClipOval(
+      return Container(
+        width: 60,
+        height: 60,
+        decoration: const BoxDecoration(
+          shape: BoxShape.circle,
+          color: Color(0xFFEDE7FF),
+        ),
+        clipBehavior: Clip.antiAlias,
         child: Image.asset(
           image,
           width: 60,
           height: 60,
           fit: BoxFit.cover,
+          alignment: Alignment.topCenter,
           errorBuilder: (_, __, ___) => defaultDoctorImage(),
         ),
       );
@@ -262,12 +302,20 @@ class _ManageDoctorsScreenState extends State<ManageDoctorsScreen> {
   }
 
   Widget defaultDoctorImage() {
-    return ClipOval(
+    return Container(
+      width: 60,
+      height: 60,
+      decoration: const BoxDecoration(
+        shape: BoxShape.circle,
+        color: Color(0xFFEDE7FF),
+      ),
+      clipBehavior: Clip.antiAlias,
       child: Image.asset(
         'assets/images/profile.jpg',
         width: 60,
         height: 60,
         fit: BoxFit.cover,
+        alignment: Alignment.topCenter,
       ),
     );
   }
@@ -843,16 +891,24 @@ class _ManageDoctorsScreenState extends State<ManageDoctorsScreen> {
         image: uploadedImageUrl.trim(),
       );
 
-      // تحديث العنصر الحالي مباشرة قبل إعادة التحميل.
-      doctor['image'] = uploadedImageUrl.trim();
-      doctor['Image'] = uploadedImageUrl.trim();
+      final visibleImageUrl = ApiService.withImageCacheVersion(
+        ApiService.fixImageUrl(uploadedImageUrl.trim()),
+        version: DateTime.now().millisecondsSinceEpoch,
+      );
+
+      // تحديث العنصر الحالي مباشرة، ثم نجلب القائمة الجديدة من السيرفر.
+      doctor['image'] = visibleImageUrl;
+      doctor['Image'] = visibleImageUrl;
+      doctor['doctorImage'] = visibleImageUrl;
+      doctor['DoctorImage'] = visibleImageUrl;
 
       ApiService.clearDoctorsCache();
 
       if (!mounted) return;
 
-      // الصورة تتحدث مباشرة من نفس العنصر بدون إعادة تحميل القائمة كاملة.
-      setState(() {});
+      setState(() {
+        loadDoctors(forceRefresh: true);
+      });
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -879,7 +935,13 @@ class _ManageDoctorsScreenState extends State<ManageDoctorsScreen> {
     );
 
     if (result == true) {
-      refreshDoctors();
+      ApiService.clearDoctorsCache();
+
+      if (!mounted) return;
+
+      setState(() {
+        loadDoctors(forceRefresh: true);
+      });
     }
   }
 

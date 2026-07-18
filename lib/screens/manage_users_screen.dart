@@ -306,9 +306,31 @@ class _ManageUsersScreenState extends State<ManageUsersScreen> {
                       ) ??
                           0;
 
-                      final full = translateUserName(
-                        '${user['fullName'] ?? user['FullName'] ?? AppStrings.noName}',
-                      );
+                      final englishName = (
+                          user['fullName'] ??
+                              user['FullName'] ??
+                              ''
+                      ).toString().trim();
+
+                      final arabicName = (
+                          user['fullNameAr'] ??
+                              user['FullNameAr'] ??
+                              ''
+                      ).toString().trim();
+
+                      final full = AppStrings.isArabic
+                          ? (arabicName.isNotEmpty
+                          ? arabicName
+                          : translateUserName(
+                        englishName.isNotEmpty
+                            ? englishName
+                            : AppStrings.noName,
+                      ))
+                          : (englishName.isNotEmpty
+                          ? englishName
+                          : (arabicName.isNotEmpty
+                          ? translateUserName(arabicName)
+                          : AppStrings.noName));
 
                       final email =
                           '${user['email'] ?? user['Email'] ?? AppStrings.noEmail}';

@@ -1,11 +1,17 @@
 import 'dart:convert';
+import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:http/http.dart' as http;
+import 'package:open_filex/open_filex.dart';
 
 import '../language/app_strings.dart';
 import '../services/api_service.dart';
+import '../services/file_downloader_stub.dart'
+if (dart.library.html) '../services/file_downloader_web.dart';
 import '../services/user_session.dart';
 
 class RecordsScreen extends StatefulWidget {
@@ -29,8 +35,14 @@ class _RecordsScreenState extends State<RecordsScreen> {
     recordsFuture = getRecords();
   }
 
-  Future<List<dynamic>> getRecords() {
-    return ApiService.getMedicalRecordsByUser(UserSession.userId ?? 0);
+  Future<List<dynamic>> getRecords() async {
+    final patientId = UserSession.userId ?? 0;
+
+    if (patientId <= 0) {
+      throw Exception('Invalid patient id');
+    }
+
+    return ApiService.getMedicalRecordsByUser(patientId);
   }
 
   void refreshRecords() {
@@ -82,29 +94,232 @@ class _RecordsScreenState extends State<RecordsScreen> {
     return 'application/octet-stream';
   }
 
-  Future<void> openFileUrl(String fileUrl) async {
-    final url = fileUrl.trim();
+
+  Uint8List? decodeDataFile(String fileUrl) {
+    try {
+      final commaIndex = fileUrl.indexOf(',');
+      if (commaIndex < 0) return null;
+      return base64Decode(fileUrl.substring(commaIndex + 1));
+    } catch (_) {
+      return null;
+    }
+  }
+
+  bool isImageFile(String fileName, String fileUrl) {
+    final value = '$fileName $fileUrl'.toLowerCase();
+
+    return value.contains('data:image') ||
+        value.endsWith('.jpg') ||
+        value.endsWith('.jpeg') ||
+        value.endsWith('.png') ||
+        value.endsWith('.webp');
+  }
+
+  Future<Uint8List?> loadFileBytes(String fileUrl) async {
+    final cleanUrl = ApiService.fixFileUrl(fileUrl);
+
+    if (cleanUrl.startsWith('data:')) {
+      return decodeDataFile(cleanUrl);
+    }
+
+    final uri = Uri.tryParse(cleanUrl);
+    if (uri == null) return null;
+
+    try {
+      final response =
+      await http.get(uri).timeout(const Duration(seconds: 30));
+      if (response.statusCode == 200) {
+        return response.bodyBytes;
+      }
+    } catch (_) {}
+
+    return null;
+  }
+
+  String safeDownloadName(String fileName, String fileUrl) {
+    var name = fileName.trim();
+
+    if (name.isEmpty || name == 'uploaded_file') {
+      final dataHeader = fileUrl.startsWith('data:')
+          ? fileUrl.substring(0, fileUrl.indexOf(',') == -1
+          ? fileUrl.length
+          : fileUrl.indexOf(','))
+          : '';
+
+      if (dataHeader.contains('application/pdf')) {
+        name = 'medical_report.pdf';
+      } else if (dataHeader.contains('image/png')) {
+        name = 'medical_report.png';
+      } else if (dataHeader.contains('image/jpeg')) {
+        name = 'medical_report.jpg';
+      } else {
+        name = 'medical_report';
+      }
+    }
+
+    return name.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
+  }
+
+  Future<void> downloadFile({
+    required String fileUrl,
+    required String fileName,
+    bool openAfterSaving = false,
+  }) async {
+    final cleanUrl = ApiService.fixFileUrl(fileUrl);
+
+    if (cleanUrl.isEmpty) {
+      showMessage(AppStrings.noFileFound);
+      return;
+    }
+
+    final bytes = await loadFileBytes(cleanUrl);
+
+    if (bytes == null || bytes.isEmpty) {
+      showMessage(
+        AppStrings.isArabic
+            ? 'تعذر تحميل الملف'
+            : 'Could not download the file',
+      );
+      return;
+    }
+
+    final safeName = safeDownloadName(fileName, cleanUrl);
+
+    try {
+      if (kIsWeb) {
+        await downloadBytesOnWeb(
+          bytes: bytes,
+          fileName: safeName,
+          mimeType: mimeType(safeName),
+        );
+
+        showMessage(
+          AppStrings.isArabic
+              ? 'تم تنزيل التقرير'
+              : 'Report downloaded',
+        );
+        return;
+      }
+
+      final path = await FilePicker.platform.saveFile(
+        dialogTitle:
+        AppStrings.isArabic ? 'حفظ التقرير الطبي' : 'Save medical report',
+        fileName: safeName,
+        bytes: bytes,
+      );
+
+      if (path == null || path.trim().isEmpty) {
+        return;
+      }
+
+      if (openAfterSaving) {
+        final result = await OpenFilex.open(path);
+
+        if (result.type != ResultType.done) {
+          showMessage(
+            AppStrings.isArabic
+                ? 'تم حفظ الملف، لكن تعذر فتحه تلقائياً'
+                : 'The file was saved but could not be opened automatically',
+          );
+          return;
+        }
+      }
+
+      showMessage(
+        openAfterSaving
+            ? (AppStrings.isArabic ? 'تم فتح التقرير' : 'Report opened')
+            : (AppStrings.isArabic ? 'تم تنزيل التقرير' : 'Report downloaded'),
+      );
+    } catch (_) {
+      showMessage(
+        AppStrings.isArabic
+            ? 'تعذر حفظ التقرير'
+            : 'Could not save the report',
+      );
+    }
+  }
+
+  Future<void> openFileUrl({
+    required String fileUrl,
+    required String fileName,
+  }) async {
+    final url = ApiService.fixFileUrl(fileUrl);
 
     if (url.isEmpty) {
       showMessage(AppStrings.noFileFound);
       return;
     }
 
-    final uri = Uri.tryParse(url);
+    if (url.startsWith('data:')) {
+      final bytes = decodeDataFile(url);
 
-    if (uri == null) {
-      showMessage(AppStrings.couldNotOpenFile);
+      if (bytes == null || bytes.isEmpty) {
+        showMessage(AppStrings.couldNotOpenFile);
+        return;
+      }
+
+      if (isImageFile(fileName, url)) {
+        if (!mounted) return;
+
+        await showDialog<void>(
+          context: context,
+          builder: (dialogContext) => Dialog(
+            insetPadding: const EdgeInsets.all(18),
+            child: Stack(
+              children: [
+                Container(
+                  constraints: const BoxConstraints(
+                    maxWidth: 900,
+                    maxHeight: 750,
+                  ),
+                  color: Colors.black,
+                  child: InteractiveViewer(
+                    minScale: 0.5,
+                    maxScale: 5,
+                    child: Center(
+                      child: Image.memory(
+                        bytes,
+                        fit: BoxFit.contain,
+                      ),
+                    ),
+                  ),
+                ),
+                PositionedDirectional(
+                  top: 6,
+                  end: 6,
+                  child: IconButton.filled(
+                    onPressed: () => Navigator.pop(dialogContext),
+                    icon: const Icon(Icons.close),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+        return;
+      }
+
+      await downloadFile(
+        fileUrl: url,
+        fileName: fileName,
+        openAfterSaving: true,
+      );
       return;
     }
 
-    final opened = await launchUrl(
-      uri,
-      mode: LaunchMode.externalApplication,
-    );
+    final uri = Uri.tryParse(url);
 
-    if (!opened) {
-      showMessage(AppStrings.couldNotOpenFile);
+    if (uri != null &&
+        await canLaunchUrl(uri) &&
+        await launchUrl(uri, mode: LaunchMode.externalApplication)) {
+      return;
     }
+
+    await downloadFile(
+      fileUrl: url,
+      fileName: fileName,
+      openAfterSaving: true,
+    );
   }
 
   Future<void> uploadReport() async {
@@ -337,7 +552,7 @@ class _RecordsScreenState extends State<RecordsScreen> {
                   Padding(
                     padding: const EdgeInsets.only(top: 10),
                     child: InkWell(
-                      onTap: () => openFileUrl(fileUrl),
+                      onTap: () => openFileUrl(fileUrl: fileUrl, fileName: fileName),
                       child: Row(
                         children: [
                           const Icon(
@@ -366,9 +581,36 @@ class _RecordsScreenState extends State<RecordsScreen> {
               ],
             ),
           ),
-          IconButton(
-            icon: const Icon(Icons.delete, color: Colors.red),
-            onPressed: () => confirmDelete(recordId),
+          Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              IconButton(
+                tooltip: AppStrings.isArabic ? 'عرض التقرير' : 'View report',
+                icon: const Icon(Icons.visibility, color: primary),
+                onPressed: fileUrl.isEmpty
+                    ? null
+                    : () => openFileUrl(
+                  fileUrl: fileUrl,
+                  fileName: fileName,
+                ),
+              ),
+              IconButton(
+                tooltip:
+                AppStrings.isArabic ? 'تنزيل التقرير' : 'Download report',
+                icon: const Icon(Icons.download, color: Colors.blue),
+                onPressed: fileUrl.isEmpty
+                    ? null
+                    : () => downloadFile(
+                  fileUrl: fileUrl,
+                  fileName: fileName,
+                ),
+              ),
+              IconButton(
+                tooltip: AppStrings.delete,
+                icon: const Icon(Icons.delete, color: Colors.red),
+                onPressed: () => confirmDelete(recordId),
+              ),
+            ],
           ),
         ],
       ),

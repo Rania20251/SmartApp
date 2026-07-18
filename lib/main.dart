@@ -5,9 +5,9 @@ import 'services/app_settings.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  await AppSettings.loadSettings();
-
   runApp(const SmartClinicApp());
+
+  await AppSettings.loadSettings();
 }
 
 class SmartClinicApp extends StatefulWidget {
@@ -21,11 +21,15 @@ class _SmartClinicAppState extends State<SmartClinicApp> {
   Future<void> changeLanguage(Locale locale) async {
     await AppSettings.changeLanguage(locale);
 
+    if (!mounted) return;
+
     setState(() {});
   }
 
   Future<void> changeTheme(bool value) async {
     await AppSettings.changeTheme(value);
+
+    if (!mounted) return;
 
     setState(() {});
   }
@@ -36,7 +40,8 @@ class _SmartClinicAppState extends State<SmartClinicApp> {
       debugShowCheckedModeBanner: false,
       title: 'MedLink',
       locale: AppSettings.currentLocale,
-      themeMode: AppSettings.isDarkMode ? ThemeMode.dark : ThemeMode.light,
+      themeMode:
+      AppSettings.isDarkMode ? ThemeMode.dark : ThemeMode.light,
       theme: ThemeData.light(),
       darkTheme: ThemeData.dark(),
       home: const SplashScreen(),

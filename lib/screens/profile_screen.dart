@@ -44,7 +44,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      // تحميل واحد فقط عند فتح البروفايل، بدون تحديث إجباري متكرر.
+      if (!mounted) return;
       _loadAppointmentCount(forceRefresh: false);
     });
   }
@@ -313,11 +313,22 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Widget build(BuildContext context) {
     const primary = Color(0xFF5B2EFF);
 
-    final fullName = translateName(
-      UserSession.fullName?.trim().isNotEmpty == true
-          ? UserSession.fullName!
+    final englishName = UserSession.fullName?.trim() ?? '';
+    final arabicName = UserSession.fullNameAr?.trim() ?? '';
+
+    final fullName = AppStrings.isArabic
+        ? (arabicName.isNotEmpty
+        ? arabicName
+        : translateName(
+      englishName.isNotEmpty
+          ? englishName
           : AppStrings.noName,
-    );
+    ))
+        : (englishName.isNotEmpty
+        ? englishName
+        : (arabicName.isNotEmpty
+        ? translateName(arabicName)
+        : AppStrings.noName));
 
     final email = UserSession.email?.trim().isNotEmpty == true
         ? UserSession.email!

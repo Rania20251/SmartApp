@@ -17,6 +17,7 @@ class EditProfileScreen extends StatefulWidget {
 
 class _EditProfileScreenState extends State<EditProfileScreen> {
   late TextEditingController nameController;
+  late TextEditingController nameArController;
   late TextEditingController emailController;
   late TextEditingController phoneController;
   late TextEditingController addressController;
@@ -35,6 +36,10 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
     nameController = TextEditingController(
       text: UserSession.fullName ?? '',
+    );
+
+    nameArController = TextEditingController(
+      text: UserSession.fullNameAr ?? '',
     );
 
     emailController = TextEditingController(
@@ -205,6 +210,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       final success = await ApiService.updateUser(
         userId: userId,
         fullName: nameController.text.trim(),
+        fullNameAr: nameArController.text.trim(),
         email: emailController.text.trim(),
         password: '',
         phoneNumber: phoneController.text.trim(),
@@ -221,6 +227,9 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       if (success) {
         UserSession.fullName =
             nameController.text.trim();
+
+        UserSession.fullNameAr =
+            nameArController.text.trim();
 
         UserSession.email =
             emailController.text.trim();
@@ -281,6 +290,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   @override
   void dispose() {
     nameController.dispose();
+    nameArController.dispose();
     emailController.dispose();
     phoneController.dispose();
     addressController.dispose();
@@ -356,6 +366,14 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                       AppStrings.fullName,
                       Icons.person,
                       nameController,
+                      forceLtr: true,
+                    ),
+
+                    buildField(
+                      isArabic ? 'الاسم الكامل بالعربية' : 'Full Name in Arabic',
+                      Icons.translate,
+                      nameArController,
+                      forceRtl: true,
                     ),
 
                     buildField(
@@ -527,6 +545,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       TextEditingController controller, {
         TextInputType? keyboardType,
         bool forceLtr = false,
+        bool forceRtl = false,
       }) {
     final bool isArabic = AppStrings.isArabic;
 
@@ -537,13 +556,20 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       child: TextField(
         controller: controller,
         keyboardType: keyboardType,
-        textDirection: forceLtr
+        textDirection: forceRtl
+            ? TextDirection.rtl
+            : forceLtr
             ? TextDirection.ltr
             : isArabic
             ? TextDirection.rtl
             : TextDirection.ltr,
-        textAlign:
-        isArabic ? TextAlign.right : TextAlign.left,
+        textAlign: forceRtl
+            ? TextAlign.right
+            : forceLtr
+            ? TextAlign.left
+            : isArabic
+            ? TextAlign.right
+            : TextAlign.left,
         decoration: inputDecoration(
           hint,
           icon,

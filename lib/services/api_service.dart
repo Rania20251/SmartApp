@@ -49,6 +49,11 @@ class ApiService {
   // كاش لوحة الأدمن منفصل عن كاش كل مريض.
   static List<dynamic>? _allAppointmentsCache;
   static final Map<int, List<dynamic>> _userAppointmentsCache = {};
+
+  // عداد البروفايل منفصل تماماً عن طلب شاشة المواعيد.
+  // لذلك تحميل البروفايل لا يحجز أو يؤخر تحميل ScheduleScreen.
+  static final Map<int, int> _appointmentCountCache = {};
+  static final Map<int, Future<int>> _appointmentCountRequests = {};
   static final Map<int, List<dynamic>> _notificationsCache = {};
   static List<dynamic>? _bannersCache;
 
@@ -74,6 +79,8 @@ class ApiService {
     if (userId != null) {
       _userAppointmentsCache.remove(userId);
       _userAppointmentsRequests.remove(userId);
+      _appointmentCountCache.remove(userId);
+      _appointmentCountRequests.remove(userId);
       return;
     }
 
@@ -81,6 +88,8 @@ class ApiService {
     _allAppointmentsRequest = null;
     _userAppointmentsCache.clear();
     _userAppointmentsRequests.clear();
+    _appointmentCountCache.clear();
+    _appointmentCountRequests.clear();
   }
 
   static void resetAppointmentsCache([int? userId]) {
@@ -228,6 +237,29 @@ class ApiService {
     if (value.startsWith('images/') ||
         value.startsWith('uploads/')) {
       return '$siteUrl/$value';
+    }
+
+    return '$siteUrl/${value.replaceFirst(RegExp(r'^/+'), '')}';
+  }
+
+  static String fixFileUrl(String fileUrl) {
+    final value = fileUrl.trim();
+
+    if (value.isEmpty ||
+        value.toLowerCase() == 'string' ||
+        value.toLowerCase() == 'null') {
+      return '';
+    }
+
+    if (value.startsWith('data:')) return value;
+
+    if (value.startsWith('http://') ||
+        value.startsWith('https://')) {
+      return value;
+    }
+
+    if (value.startsWith('/')) {
+      return '$siteUrl$value';
     }
 
     return '$siteUrl/${value.replaceFirst(RegExp(r'^/+'), '')}';
@@ -684,6 +716,7 @@ class ApiService {
 
   static Future<bool> register({
     required String fullName,
+    String fullNameAr = '',
     required String email,
     required String password,
   }) async {
@@ -694,6 +727,7 @@ class ApiService {
         headers: headers,
         body: jsonEncode({
           'fullName': fullName.trim(),
+          'fullNameAr': fullNameAr.trim(),
           'email': email.trim(),
           'password': password.trim(),
           'phoneNumber': '',
@@ -715,6 +749,7 @@ class ApiService {
   static Future<bool> updateUser({
     required int userId,
     required String fullName,
+    String fullNameAr = '',
     required String email,
     required String password,
     required String phoneNumber,
@@ -731,6 +766,7 @@ class ApiService {
         body: jsonEncode({
           'userId': userId,
           'fullName': fullName.trim(),
+          'fullNameAr': fullNameAr.trim(),
           'email': email.trim(),
           'password': password.trim(),
           'phoneNumber': phoneNumber.trim(),
@@ -871,6 +907,24 @@ class ApiService {
                     .millisecondsSinceEpoch,
               )
                   : fixedImage;
+
+              final rawDoctorId =
+                  doctor['doctorId'] ??
+                      doctor['DoctorId'] ??
+                      doctor['id'] ??
+                      doctor['Id'];
+
+              doctor['doctorId'] = rawDoctorId is int
+                  ? rawDoctorId
+                  : int.tryParse(rawDoctorId?.toString() ?? '') ?? 0;
+
+              doctor['fullName'] = (
+                  doctor['fullName'] ??
+                      doctor['FullName'] ??
+                      doctor['name'] ??
+                      doctor['Name'] ??
+                      ''
+              ).toString();
 
               doctor['specialty'] = getSpecialtyName(doctor);
             }
@@ -1132,6 +1186,9 @@ class ApiService {
     required int patientId,
     required int doctorId,
     required DateTime appointmentDate,
+    String doctorName = '',
+    String specialtyName = '',
+    String doctorImage = '',
   }) async {
     if (patientId <= 0) {
       throw Exception('Invalid patient id');
@@ -1156,8 +1213,7 @@ class ApiService {
         .timeout(normalTimeout);
 
     if (response.statusCode == 409) {
-      String message =
-          'This appointment time is already booked.';
+      String message = 'هذا الموعد غير متاح.';
 
       try {
         final decoded = jsonDecode(response.body);
@@ -1170,19 +1226,146 @@ class ApiService {
       throw AppointmentSlotTakenException(message);
     }
 
-    if (response.statusCode != 200 && response.statusCode != 201) {
+    if (response.statusCode != 200 &&
+        response.statusCode != 201 &&
+        response.statusCode != 204) {
       throw Exception(
-        'Failed to book appointment: '
-            '${response.statusCode} ${response.body}',
+        'تعذر حجز الموعد (${response.statusCode}).',
       );
     }
 
-    // امسح كاش لوحة الأدمن وكاش المريض الحالي معًا.
-    _allAppointmentsCache = null;
-    _allAppointmentsRequest = null;
-    _userAppointmentsCache.remove(patientId);
+    // مهم: لا ننتظر طلبات GET بعد نجاح الحجز.
+    // سابقاً كان الحجز ينجح في السيرفر ثم يبقى الزر يحمل،
+    // وإذا تأخر تحديث القوائم تظهر رسالة Failed رغم نجاح الحجز.
+    Map<String, dynamic> createdAppointment = <String, dynamic>{
+      'appointmentId': 0,
+      'patientId': patientId,
+      'doctorId': doctorId,
+      'appointmentDate': appointmentDate.toIso8601String(),
+      'status': 'Pending',
+      'doctorName': doctorName.trim(),
+      'specialtyName': specialtyName.trim(),
+      'doctorImage': fixImageUrl(doctorImage),
+    };
+
+    if (response.body.trim().isNotEmpty) {
+      try {
+        final decoded = jsonDecode(response.body);
+
+        if (decoded is Map) {
+          createdAppointment = Map<String, dynamic>.from(decoded);
+        }
+      } catch (_) {
+        // نجاح الحجز لا يعتمد على إمكانية قراءة جسم الاستجابة.
+      }
+    }
+
+    createdAppointment['patientId'] =
+        createdAppointment['patientId'] ??
+            createdAppointment['PatientId'] ??
+            patientId;
+
+    createdAppointment['doctorId'] =
+        createdAppointment['doctorId'] ??
+            createdAppointment['DoctorId'] ??
+            doctorId;
+
+    createdAppointment['appointmentDate'] =
+        createdAppointment['appointmentDate'] ??
+            createdAppointment['AppointmentDate'] ??
+            appointmentDate.toIso8601String();
+
+    createdAppointment['status'] =
+        createdAppointment['status'] ??
+            createdAppointment['Status'] ??
+            'Pending';
+
+    final returnedDoctorName = (
+        createdAppointment['doctorName'] ??
+            createdAppointment['DoctorName'] ??
+            ''
+    ).toString().trim();
+
+    final returnedSpecialtyName = (
+        createdAppointment['specialtyName'] ??
+            createdAppointment['SpecialtyName'] ??
+            ''
+    ).toString().trim();
+
+    final returnedDoctorImage = (
+        createdAppointment['doctorImage'] ??
+            createdAppointment['DoctorImage'] ??
+            createdAppointment['image'] ??
+            createdAppointment['Image'] ??
+            ''
+    ).toString().trim();
+
+    if (returnedDoctorName.isEmpty && doctorName.trim().isNotEmpty) {
+      createdAppointment['doctorName'] = doctorName.trim();
+      createdAppointment['DoctorName'] = doctorName.trim();
+    }
+
+    if (returnedSpecialtyName.isEmpty && specialtyName.trim().isNotEmpty) {
+      createdAppointment['specialtyName'] = specialtyName.trim();
+      createdAppointment['SpecialtyName'] = specialtyName.trim();
+    }
+
+    if (returnedDoctorImage.isEmpty && doctorImage.trim().isNotEmpty) {
+      final fixedDoctorImage = fixImageUrl(doctorImage);
+      createdAppointment['doctorImage'] = fixedDoctorImage;
+      createdAppointment['DoctorImage'] = fixedDoctorImage;
+      createdAppointment['image'] = fixedDoctorImage;
+    }
+
+    final currentUserList = List<dynamic>.from(
+      _userAppointmentsCache[patientId] ?? const <dynamic>[],
+    );
+
+    final createdId = (
+        createdAppointment['appointmentId'] ??
+            createdAppointment['AppointmentId'] ??
+            0
+    ).toString();
+
+    final alreadyExists = createdId != '0' &&
+        currentUserList.any((item) {
+          if (item is! Map) return false;
+
+          final itemId =
+              item['appointmentId'] ?? item['AppointmentId'];
+
+          return itemId?.toString() == createdId;
+        });
+
+    if (!alreadyExists) {
+      currentUserList.insert(
+        0,
+        Map<String, dynamic>.from(createdAppointment),
+      );
+    }
+
+    _userAppointmentsCache[patientId] = currentUserList;
     _userAppointmentsRequests.remove(patientId);
+
+    final previousCount = _appointmentCountCache[patientId];
+    if (previousCount != null && !alreadyExists) {
+      _appointmentCountCache[patientId] = previousCount + 1;
+    } else {
+      _appointmentCountCache[patientId] = currentUserList.length;
+    }
+    _appointmentCountRequests.remove(patientId);
+
+    if (_allAppointmentsCache != null && !alreadyExists) {
+      _allAppointmentsCache!.insert(
+        0,
+        Map<String, dynamic>.from(createdAppointment),
+      );
+    }
+
+    _allAppointmentsRequest = null;
     clearNotificationsCache(patientId);
+
+    // الشاشة والبروفايل يتحدثان فوراً من الكاش بدون انتظار الشبكة.
     notifyAppointmentsChanged();
   }
 
@@ -1285,8 +1468,6 @@ class ApiService {
 
     final request = (() async {
       try {
-        // الطلب المباشر يمنع تحميل مواعيد مستخدمين آخرين
-        // ويلغي الحاجة إلى فلترة جميع المواعيد في Flutter.
         final response = await http
             .get(
           Uri.parse(
@@ -1300,7 +1481,7 @@ class ApiService {
           return <dynamic>[];
         }
 
-        // دعم مؤقت في حال لم يُنشر مسار patient على السيرفر بعد.
+        // دعم نسخة السيرفر القديمة فقط عندما يكون المسار غير موجود.
         if (response.statusCode == 404) {
           final all = await getAllAppointments(
             forceRefresh: forceRefresh,
@@ -1323,7 +1504,9 @@ class ApiService {
                 : appointment;
           }).toList();
 
-          _userAppointmentsCache[userId] = fallback;
+          _userAppointmentsCache[userId] =
+          List<dynamic>.from(fallback);
+
           return List<dynamic>.from(fallback);
         }
 
@@ -1373,10 +1556,19 @@ class ApiService {
           return <dynamic>[];
         }
 
+        // القائمة الفارغة نتيجة صحيحة، لذلك لا نحمل كل مواعيد النظام مرة ثانية.
         _userAppointmentsCache[userId] =
         List<dynamic>.from(appointments);
 
         return List<dynamic>.from(appointments);
+      } catch (_) {
+        if (_userAppointmentsCache.containsKey(userId)) {
+          return List<dynamic>.from(
+            _userAppointmentsCache[userId]!,
+          );
+        }
+
+        rethrow;
       } finally {
         _userAppointmentsRequests.remove(userId);
       }
@@ -1413,18 +1605,40 @@ class ApiService {
     required Map<String, dynamic> appointment,
     required String status,
   }) async {
-    final appointmentId =
+    final rawAppointmentId =
         appointment['appointmentId'] ?? appointment['AppointmentId'];
 
-    final patientId = appointment['patientId'] ?? appointment['PatientId'];
-    final doctorId = appointment['doctorId'] ?? appointment['DoctorId'];
-    final appointmentDate =
+    final rawPatientId =
+        appointment['patientId'] ?? appointment['PatientId'];
+
+    final rawDoctorId =
+        appointment['doctorId'] ?? appointment['DoctorId'];
+
+    final rawAppointmentDate =
         appointment['appointmentDate'] ?? appointment['AppointmentDate'];
 
+    final appointmentId = rawAppointmentId is int
+        ? rawAppointmentId
+        : int.tryParse(rawAppointmentId?.toString() ?? '');
+
+    final patientId = rawPatientId is int
+        ? rawPatientId
+        : int.tryParse(rawPatientId?.toString() ?? '');
+
+    final doctorId = rawDoctorId is int
+        ? rawDoctorId
+        : int.tryParse(rawDoctorId?.toString() ?? '');
+
+    final appointmentDate =
+        rawAppointmentDate?.toString().trim() ?? '';
+
     if (appointmentId == null ||
+        appointmentId <= 0 ||
         patientId == null ||
+        patientId <= 0 ||
         doctorId == null ||
-        appointmentDate == null) {
+        doctorId <= 0 ||
+        appointmentDate.isEmpty) {
       throw Exception('Invalid appointment data');
     }
 
@@ -1437,28 +1651,32 @@ class ApiService {
         'patientId': patientId,
         'doctorId': doctorId,
         'appointmentDate': appointmentDate,
-        'status': status,
+        'status': status.trim(),
       }),
     )
-        .timeout(normalTimeout);
+        .timeout(const Duration(seconds: 30));
 
-    if (response.statusCode != 200 && response.statusCode != 204) {
-      throw Exception('Failed to update appointment status');
+    if (response.statusCode != 200 &&
+        response.statusCode != 204) {
+      throw Exception(
+        'Failed to update appointment status '
+            '(${response.statusCode}): ${response.body}',
+      );
     }
 
-    // تحديث جميع نسخ الكاش محلياً فوراً بدون إعادة تحميل الصفحة.
     void updateList(List<dynamic>? list) {
       if (list == null) return;
 
       for (final item in list) {
-        if (item is Map<String, dynamic>) {
-          final id = item['appointmentId'] ?? item['AppointmentId'];
+        if (item is! Map) continue;
 
-          if (id.toString() == appointmentId.toString()) {
-            item['status'] = status;
-            item['Status'] = status;
-            break;
-          }
+        final itemId =
+            item['appointmentId'] ?? item['AppointmentId'];
+
+        if (itemId?.toString() == appointmentId.toString()) {
+          item['status'] = status;
+          item['Status'] = status;
+          break;
         }
       }
     }
@@ -1482,46 +1700,68 @@ class ApiService {
     if (patientId <= 0) return 0;
 
     if (!forceRefresh &&
-        _userAppointmentsCache.containsKey(patientId)) {
-      return _userAppointmentsCache[patientId]!.length;
+        _appointmentCountCache.containsKey(patientId)) {
+      return _appointmentCountCache[patientId]!;
     }
 
-    final currentUserId = UserSession.userId;
-
-    if (currentUserId == patientId) {
-      final appointments = await getAppointments(
-        forceRefresh: forceRefresh,
-      );
-
-      return appointments.length;
+    if (!forceRefresh &&
+        _appointmentCountRequests.containsKey(patientId)) {
+      return _appointmentCountRequests[patientId]!;
     }
 
-    // يُستخدم فقط عندما يطلب الأدمن عداد مستخدم محدد.
-    final response = await http
-        .get(
-      Uri.parse(
-        '$baseUrl/Appointments/patient/$patientId',
-      ),
-      headers: headers,
-    )
-        .timeout(normalTimeout);
+    final request = (() async {
+      try {
+        final response = await http
+            .get(
+          Uri.parse(
+            '$baseUrl/Appointments/patient/$patientId',
+          ),
+          headers: headers,
+        )
+            .timeout(normalTimeout);
 
-    if (response.statusCode != 200) {
-      return _userAppointmentsCache[patientId]?.length ?? 0;
-    }
+        if (response.statusCode == 200) {
+          final decoded = jsonDecode(response.body);
 
-    final decoded = jsonDecode(response.body);
+          if (decoded is List) {
+            final count = decoded.length;
+            _appointmentCountCache[patientId] = count;
+            return count;
+          }
+        }
 
-    if (decoded is! List) return 0;
+        // دعم نسخة السيرفر القديمة إذا لم يوجد مسار patient.
+        if (response.statusCode == 404) {
+          final all = await getAllAppointments(
+            forceRefresh: forceRefresh,
+          );
 
-    final appointments = decoded.map<dynamic>((item) {
-      return item is Map
-          ? Map<String, dynamic>.from(item)
-          : item;
-    }).toList();
+          final id = patientId.toString();
+          final count = all.where((appointment) {
+            if (appointment is! Map) return false;
 
-    _userAppointmentsCache[patientId] = appointments;
-    return appointments.length;
+            return appointment['patientId']?.toString() == id ||
+                appointment['PatientId']?.toString() == id;
+          }).length;
+
+          _appointmentCountCache[patientId] = count;
+          return count;
+        }
+
+        return _appointmentCountCache[patientId] ??
+            _userAppointmentsCache[patientId]?.length ??
+            0;
+      } catch (_) {
+        return _appointmentCountCache[patientId] ??
+            _userAppointmentsCache[patientId]?.length ??
+            0;
+      } finally {
+        _appointmentCountRequests.remove(patientId);
+      }
+    })();
+
+    _appointmentCountRequests[patientId] = request;
+    return request;
   }
 
   static Future<void> deleteAppointment(int appointmentId) async {
@@ -1533,31 +1773,142 @@ class ApiService {
         .timeout(normalTimeout);
 
     if (response.statusCode != 200 && response.statusCode != 204) {
-      throw Exception('Failed to delete appointment');
+      throw Exception(
+        'تعذر حذف الموعد (${response.statusCode}).',
+      );
     }
 
-    clearAppointmentsCache();
+    // نحدد صاحب الموعد قبل الحذف حتى يتحدث عداد البروفايل فوراً.
+    int? deletedPatientId;
+
+    for (final entry in _userAppointmentsCache.entries) {
+      final exists = entry.value.any((item) {
+        if (item is! Map) return false;
+        final rawId = item['appointmentId'] ?? item['AppointmentId'];
+        return rawId?.toString() == appointmentId.toString();
+      });
+
+      if (exists) {
+        deletedPatientId = entry.key;
+        break;
+      }
+    }
+
+    // نحذف الموعد من الكاش مباشرة بدل تصفير القائمة كاملة.
+    void removeFromList(List<dynamic>? list) {
+      if (list == null) return;
+
+      list.removeWhere((item) {
+        if (item is! Map) return false;
+
+        final rawId =
+            item['appointmentId'] ?? item['AppointmentId'];
+
+        return rawId?.toString() == appointmentId.toString();
+      });
+    }
+
+    removeFromList(_allAppointmentsCache);
+
+    for (final list in _userAppointmentsCache.values) {
+      removeFromList(list);
+    }
+
+    _allAppointmentsRequest = null;
+    _userAppointmentsRequests.clear();
+
+    if (deletedPatientId != null) {
+      _appointmentCountCache[deletedPatientId!] =
+          _userAppointmentsCache[deletedPatientId!]?.length ?? 0;
+      _appointmentCountRequests.remove(deletedPatientId!);
+    }
+
     clearNotificationsCache();
     notifyAppointmentsChanged();
   }
 
-  static Future<List<dynamic>> getMedicalRecords() async {
-    try {
-      final response = await http
-          .get(medicalRecordsUrl, headers: headers)
-          .timeout(normalTimeout);
+  static List<dynamic> _normalizeMedicalRecords(
+      List<dynamic> records,
+      ) {
+    return records.map<dynamic>((record) {
+      if (record is! Map) return record;
 
-      if (response.statusCode == 200) {
-        return decodeList(response.body);
-      }
+      final copy = Map<String, dynamic>.from(record);
 
-      return [];
-    } catch (_) {
-      return [];
-    }
+      final rawFileUrl =
+          copy['fileUrl'] ??
+              copy['FileUrl'] ??
+              copy['filePath'] ??
+              copy['FilePath'] ??
+              '';
+
+      final fixedFileUrl = fixFileUrl(rawFileUrl.toString());
+
+      copy['fileUrl'] = fixedFileUrl;
+      copy['FileUrl'] = fixedFileUrl;
+
+      return copy;
+    }).toList();
   }
 
-  static Future<List<dynamic>> getMedicalRecordsByUser(int patientId) async {
+  static int? _medicalRecordPatientId(dynamic record) {
+    if (record is! Map) return null;
+
+    final direct =
+        record['patientId'] ??
+            record['PatientId'] ??
+            record['userId'] ??
+            record['UserId'];
+
+    final directId = direct is int
+        ? direct
+        : int.tryParse(direct?.toString() ?? '');
+
+    if (directId != null) return directId;
+
+    final patient = record['patient'] ?? record['Patient'];
+
+    if (patient is Map) {
+      final nested =
+          patient['patientId'] ??
+              patient['PatientId'] ??
+              patient['userId'] ??
+              patient['UserId'] ??
+              patient['id'] ??
+              patient['Id'];
+
+      return nested is int
+          ? nested
+          : int.tryParse(nested?.toString() ?? '');
+    }
+
+    return null;
+  }
+
+  static Future<List<dynamic>> getMedicalRecords() async {
+    final response = await http
+        .get(medicalRecordsUrl, headers: headers)
+        .timeout(normalTimeout);
+
+    if (response.statusCode != 200) {
+      throw Exception(
+        'Failed to load medical records '
+            '(${response.statusCode}): ${response.body}',
+      );
+    }
+
+    return _normalizeMedicalRecords(
+      decodeList(response.body),
+    );
+  }
+
+  static Future<List<dynamic>> getMedicalRecordsByUser(
+      int patientId,
+      ) async {
+    if (patientId <= 0) {
+      throw Exception('Invalid patient id');
+    }
+
     try {
       final response = await http
           .get(
@@ -1567,13 +1918,28 @@ class ApiService {
           .timeout(normalTimeout);
 
       if (response.statusCode == 200) {
-        return decodeList(response.body);
-      }
+        final directRecords = _normalizeMedicalRecords(
+          decodeList(response.body),
+        );
 
-      return [];
+        // بعض نسخ السيرفر ترجع 200 وقائمة فارغة رغم وجود سجلات.
+        if (directRecords.isNotEmpty) {
+          return directRecords;
+        }
+      }
     } catch (_) {
-      return [];
+      // نكمل للمسار الاحتياطي.
     }
+
+    final allRecords = await getMedicalRecords();
+
+    return allRecords.where((record) {
+      return _medicalRecordPatientId(record) == patientId;
+    }).map<dynamic>((record) {
+      return record is Map
+          ? Map<String, dynamic>.from(record)
+          : record;
+    }).toList();
   }
 
   static Future<void> createMedicalRecord({
@@ -1602,7 +1968,10 @@ class ApiService {
         .timeout(normalTimeout);
 
     if (response.statusCode != 200 && response.statusCode != 201) {
-      throw Exception('Failed to create medical record');
+      throw Exception(
+        'Failed to create medical record '
+            '(${response.statusCode}): ${response.body}',
+      );
     }
   }
 
@@ -1659,9 +2028,123 @@ class ApiService {
     return records.length;
   }
 
-  static Future<int> getAppointmentsCount() async {
-    final appointments = await getAllAppointments();
-    return appointments.length;
+
+  static Future<int> getPendingAppointmentsCount({
+    bool forceRefresh = false,
+  }) async {
+    try {
+      final uri = Uri.parse(
+        '$baseUrl/Appointments/pending-count',
+      ).replace(
+        queryParameters: forceRefresh
+            ? {
+          'v': DateTime.now().millisecondsSinceEpoch.toString(),
+        }
+            : null,
+      );
+
+      final response = await http
+          .get(uri, headers: headers)
+          .timeout(normalTimeout);
+
+      if (response.statusCode == 200) {
+        final decoded = jsonDecode(response.body);
+
+        if (decoded is Map) {
+          final rawCount = decoded['count'] ?? decoded['Count'];
+          final count = rawCount is int
+              ? rawCount
+              : int.tryParse(rawCount?.toString() ?? '');
+
+          if (count != null) return count;
+        }
+
+        final plainCount = int.tryParse(response.body.trim());
+        if (plainCount != null) return plainCount;
+      }
+
+      // توافق مؤقت قبل نشر مسار pending-count على السيرفر.
+      final appointments = await getAllAppointments(
+        forceRefresh: forceRefresh,
+      );
+
+      return appointments.where((appointment) {
+        if (appointment is! Map) return false;
+
+        final rawStatus =
+            appointment['status'] ?? appointment['Status'] ?? '';
+
+        return rawStatus
+            .toString()
+            .trim()
+            .toLowerCase() ==
+            'pending';
+      }).length;
+    } catch (_) {
+      if (_allAppointmentsCache != null) {
+        return _allAppointmentsCache!.where((appointment) {
+          if (appointment is! Map) return false;
+
+          final rawStatus =
+              appointment['status'] ?? appointment['Status'] ?? '';
+
+          return rawStatus
+              .toString()
+              .trim()
+              .toLowerCase() ==
+              'pending';
+        }).length;
+      }
+
+      rethrow;
+    }
+  }
+
+  static Future<int> getAppointmentsCount({
+    bool forceRefresh = false,
+  }) async {
+    try {
+      final uri = Uri.parse('$baseUrl/Appointments/count').replace(
+        queryParameters: forceRefresh
+            ? {
+          'v': DateTime.now().millisecondsSinceEpoch.toString(),
+        }
+            : null,
+      );
+
+      final response = await http
+          .get(uri, headers: headers)
+          .timeout(normalTimeout);
+
+      if (response.statusCode == 200) {
+        final decoded = jsonDecode(response.body);
+
+        if (decoded is Map) {
+          final rawCount = decoded['count'] ?? decoded['Count'];
+          final count = rawCount is int
+              ? rawCount
+              : int.tryParse(rawCount?.toString() ?? '');
+
+          if (count != null) return count;
+        }
+
+        final plainCount = int.tryParse(response.body.trim());
+        if (plainCount != null) return plainCount;
+      }
+
+      // توافق مؤقت إذا لم يُنشر مسار count على السيرفر بعد.
+      final appointments = await getAllAppointments(
+        forceRefresh: forceRefresh,
+      );
+
+      return appointments.length;
+    } catch (_) {
+      if (_allAppointmentsCache != null) {
+        return _allAppointmentsCache!.length;
+      }
+
+      rethrow;
+    }
   }
 
   static Future<List<dynamic>> getNotificationsByUser(
