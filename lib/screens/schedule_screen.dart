@@ -60,11 +60,41 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
       _onAppointmentsChanged,
     );
 
-    // تحميل واحد فقط عند فتح الشاشة.
+    // اعرض الكاش فوراً، ثم حدّث من السيرفر بالخلفية.
     loadAppointments(
       showSmallLoading: true,
-      forceRefresh: true,
-    );
+      forceRefresh: false,
+    ).then((_) {
+      if (!mounted) return;
+      unawaited(_refreshAppointmentsInBackground());
+    });
+  }
+
+  Future<void> _refreshAppointmentsInBackground() async {
+    if (!mounted || isRefreshing) return;
+
+    final requestUserId = UserSession.userId;
+    if (requestUserId == null || requestUserId <= 0) return;
+
+    try {
+      final data = await ApiService.getAppointments(
+        forceRefresh: true,
+      );
+
+      if (!mounted || requestUserId != UserSession.userId) return;
+
+      final loadedAppointments = List<dynamic>.from(data);
+
+      setState(() {
+        allAppointments = loadedAppointments;
+        _invalidateFilteredAppointmentsCache();
+        _appointmentsOwnerUserId = requestUserId;
+        firstLoadDone = true;
+        errorMessage = null;
+      });
+    } catch (_) {
+      // نبقي المواعيد الحالية ظاهرة إذا تأخر أو فشل السيرفر.
+    }
   }
 
   void _onAppointmentsChanged() {
@@ -574,142 +604,157 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
               width: double.infinity,
               child: Stack(
                 children: [
-                  if (!firstLoadDone && safeAppointments.isEmpty)
-                    loadingBox()
-                  else if (errorMessage != null && safeAppointments.isEmpty)
+                  CustomScrollView(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    slivers: [
+                      SliverPadding(
+                        padding: const EdgeInsets.fromLTRB(18, 18, 18, 0),
+                        sliver: SliverToBoxAdapter(
+                          child: buildSearchField(),
+                        ),
+                      ),
+                      SliverPadding(
+                        padding: const EdgeInsets.symmetric(horizontal: 18),
+                        sliver: SliverToBoxAdapter(
+                          child: Container(
+                            height: 52,
+                            padding: const EdgeInsets.all(5),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(18),
+                            ),
+                            child: Row(
+                              textDirection: AppStrings.isArabic
+                                  ? TextDirection.rtl
+                                  : TextDirection.ltr,
+                              children: [
+                                Expanded(
+                                  child: tabButton(
+                                    title: AppStrings.isArabic
+                                        ? 'القادمة'
+                                        : 'Upcoming',
+                                    selected: showUpcoming,
+                                    onTap: () {
+                                      if (!showUpcoming) {
+                                        setState(() {
+                                          showUpcoming = true;
+                                          _invalidateFilteredAppointmentsCache();
+                                        });
+                                      }
+                                    },
+                                  ),
+                                ),
+                                Expanded(
+                                  child: tabButton(
+                                    title:
+                                    AppStrings.isArabic ? 'السابقة' : 'Past',
+                                    selected: !showUpcoming,
+                                    onTap: () {
+                                      if (showUpcoming) {
+                                        setState(() {
+                                          showUpcoming = false;
+                                          _invalidateFilteredAppointmentsCache();
+                                        });
+                                      }
+                                    },
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SliverToBoxAdapter(
+                        child: SizedBox(height: 20),
+                      ),
+                      if (appointments.isEmpty && firstLoadDone)
+                        SliverToBoxAdapter(
+                          child: Padding(
+                            padding: const EdgeInsets.only(top: 80),
+                            child: Center(
+                              child: Text(AppStrings.noAppointmentsFound),
+                            ),
+                          ),
+                        )
+                      else
+                        SliverPadding(
+                          padding: const EdgeInsets.symmetric(horizontal: 18),
+                          sliver: SliverList(
+                            delegate: SliverChildBuilderDelegate(
+                                  (context, index) {
+                                final appointment = appointments[index];
+                                final doctorId = int.tryParse(
+                                  valueOf(
+                                    appointment,
+                                    ['doctorId', 'DoctorId'],
+                                    '0',
+                                  ),
+                                ) ??
+                                    0;
+                                final appointmentId = int.tryParse(
+                                  valueOf(
+                                    appointment,
+                                    ['appointmentId', 'AppointmentId'],
+                                    '0',
+                                  ),
+                                ) ??
+                                    0;
+                                final dateValue = valueOf(
+                                  appointment,
+                                  ['appointmentDate', 'AppointmentDate'],
+                                  '',
+                                );
+
+                                return AppointmentCard(
+                                  key: ValueKey(appointmentId),
+                                  appointment: appointment
+                                  is Map<String, dynamic>
+                                      ? appointment
+                                      : Map<String, dynamic>.from(
+                                    appointment,
+                                  ),
+                                  doctorId: doctorId,
+                                  date: formatDate(dateValue),
+                                  time: formatTime(dateValue),
+                                  onDeleted: () =>
+                                      removeAppointmentLocal(appointmentId),
+                                );
+                              },
+                              childCount: appointments.length,
+                              addAutomaticKeepAlives: false,
+                              addRepaintBoundaries: true,
+                            ),
+                          ),
+                        ),
+                      const SliverToBoxAdapter(
+                        child: SizedBox(height: 90),
+                      ),
+                    ],
+                  ),
+
+                  if (isRefreshing)
+                    const Positioned(
+                      top: 0,
+                      left: 0,
+                      right: 0,
+                      child: IgnorePointer(
+                        child: SizedBox(
+                          height: 2,
+                          child: LinearProgressIndicator(
+                            minHeight: 2,
+                          ),
+                        ),
+                      ),
+                    ),
+
+                  if (errorMessage != null &&
+                      safeAppointments.isEmpty &&
+                      firstLoadDone)
                     Center(
                       child: Text(
                         errorMessage!,
                         style: const TextStyle(color: Colors.red),
                       ),
-                    )
-                  else
-                    CustomScrollView(
-                      physics: const AlwaysScrollableScrollPhysics(),
-                      slivers: [
-                        SliverPadding(
-                          padding: const EdgeInsets.fromLTRB(18, 18, 18, 0),
-                          sliver: SliverToBoxAdapter(
-                            child: buildSearchField(),
-                          ),
-                        ),
-                        SliverPadding(
-                          padding: const EdgeInsets.symmetric(horizontal: 18),
-                          sliver: SliverToBoxAdapter(
-                            child: Container(
-                              height: 52,
-                              padding: const EdgeInsets.all(5),
-                              decoration: BoxDecoration(
-                                color: Colors.white,
-                                borderRadius: BorderRadius.circular(18),
-                              ),
-                              child: Row(
-                                textDirection: AppStrings.isArabic
-                                    ? TextDirection.rtl
-                                    : TextDirection.ltr,
-                                children: [
-                                  Expanded(
-                                    child: tabButton(
-                                      title: AppStrings.isArabic
-                                          ? 'القادمة'
-                                          : 'Upcoming',
-                                      selected: showUpcoming,
-                                      onTap: () {
-                                        if (!showUpcoming) {
-                                          setState(() {
-                                            showUpcoming = true;
-                                            _invalidateFilteredAppointmentsCache();
-                                          });
-                                        }
-                                      },
-                                    ),
-                                  ),
-                                  Expanded(
-                                    child: tabButton(
-                                      title:
-                                      AppStrings.isArabic ? 'السابقة' : 'Past',
-                                      selected: !showUpcoming,
-                                      onTap: () {
-                                        if (showUpcoming) {
-                                          setState(() {
-                                            showUpcoming = false;
-                                            _invalidateFilteredAppointmentsCache();
-                                          });
-                                        }
-                                      },
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ),
-                        const SliverToBoxAdapter(
-                          child: SizedBox(height: 20),
-                        ),
-                        if (appointments.isEmpty)
-                          SliverToBoxAdapter(
-                            child: Padding(
-                              padding: const EdgeInsets.only(top: 80),
-                              child: Center(
-                                child: Text(AppStrings.noAppointmentsFound),
-                              ),
-                            ),
-                          )
-                        else
-                          SliverPadding(
-                            padding: const EdgeInsets.symmetric(horizontal: 18),
-                            sliver: SliverList(
-                              delegate: SliverChildBuilderDelegate(
-                                    (context, index) {
-                                  final appointment = appointments[index];
-                                  final doctorId = int.tryParse(
-                                    valueOf(
-                                      appointment,
-                                      ['doctorId', 'DoctorId'],
-                                      '0',
-                                    ),
-                                  ) ??
-                                      0;
-                                  final appointmentId = int.tryParse(
-                                    valueOf(
-                                      appointment,
-                                      ['appointmentId', 'AppointmentId'],
-                                      '0',
-                                    ),
-                                  ) ??
-                                      0;
-                                  final dateValue = valueOf(
-                                    appointment,
-                                    ['appointmentDate', 'AppointmentDate'],
-                                    '',
-                                  );
-
-                                  return AppointmentCard(
-                                    key: ValueKey(appointmentId),
-                                    appointment: appointment
-                                    is Map<String, dynamic>
-                                        ? appointment
-                                        : Map<String, dynamic>.from(
-                                      appointment,
-                                    ),
-                                    doctorId: doctorId,
-                                    date: formatDate(dateValue),
-                                    time: formatTime(dateValue),
-                                    onDeleted: () =>
-                                        removeAppointmentLocal(appointmentId),
-                                  );
-                                },
-                                childCount: appointments.length,
-                                addAutomaticKeepAlives: false,
-                                addRepaintBoundaries: true,
-                              ),
-                            ),
-                          ),
-                        const SliverToBoxAdapter(
-                          child: SizedBox(height: 90),
-                        ),
-                      ],
                     ),
                 ],
               ),

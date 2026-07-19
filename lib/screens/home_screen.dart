@@ -47,12 +47,9 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
 
-    // نطلب بيانات الأطباء مرة واحدة من السيرفر عند فتح الهوم
-    // حتى لا تبقى صور fallback القديمة محفوظة في الكاش.
-    doctorsFuture = ApiService.getDoctors(forceRefresh: true).then((data) {
-      cachedDoctors = List<dynamic>.from(data);
-      return cachedDoctors;
-    });
+    // نعرض الأطباء من الكاش فوراً، ثم نحدّثهم بهدوء من السيرفر.
+    // هذا لا يغيّر doctorId ولا مسار الحجز.
+    doctorsFuture = _loadDoctorsFast();
 
     specialtiesFuture = ApiService.getSpecialties().then((data) {
       cachedSpecialties = List<dynamic>.from(data);
@@ -60,6 +57,40 @@ class _HomeScreenState extends State<HomeScreen> {
     });
 
     loadBanners();
+  }
+
+  Future<List<dynamic>> _loadDoctorsFast() async {
+    try {
+      // أولاً: استخدم كاش ApiService حتى تظهر البطاقات بأسرع وقت.
+      final cachedData = await ApiService.getDoctors(forceRefresh: false);
+      cachedDoctors = List<dynamic>.from(cachedData);
+
+      // ثانياً: تحديث صامت من السيرفر بدون إخفاء الأطباء الموجودين.
+      unawaited(_refreshDoctorsInBackground());
+
+      return cachedDoctors;
+    } catch (_) {
+      // إذا لم يتوفر الكاش، نجلب من السيرفر مرة واحدة.
+      final freshData = await ApiService.getDoctors(forceRefresh: true);
+      cachedDoctors = List<dynamic>.from(freshData);
+      return cachedDoctors;
+    }
+  }
+
+  Future<void> _refreshDoctorsInBackground() async {
+    try {
+      final freshData = await ApiService.getDoctors(forceRefresh: true);
+      if (!mounted) return;
+
+      final freshDoctors = List<dynamic>.from(freshData);
+
+      setState(() {
+        cachedDoctors = freshDoctors;
+        doctorsFuture = Future<List<dynamic>>.value(cachedDoctors);
+      });
+    } catch (_) {
+      // نبقي الأطباء الموجودين ظاهرين إذا فشل التحديث.
+    }
   }
 
   @override
@@ -864,10 +895,14 @@ class _HomeScreenState extends State<HomeScreen> {
                     builder: (context, snapshot) {
                       if (snapshot.connectionState == ConnectionState.waiting &&
                           cachedDoctors.isEmpty) {
-                        return const Center(
-                          child: Padding(
-                            padding: EdgeInsets.all(12),
-                            child: CircularProgressIndicator(strokeWidth: 2),
+                        return const SizedBox(
+                          height: 42,
+                          child: Center(
+                            child: SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            ),
                           ),
                         );
                       }

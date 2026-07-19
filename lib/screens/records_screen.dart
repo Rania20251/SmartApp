@@ -77,7 +77,8 @@ class _RecordsScreenState extends State<RecordsScreen> {
 
     if (name.endsWith('.jpg') ||
         name.endsWith('.jpeg') ||
-        name.endsWith('.png')) {
+        name.endsWith('.png') ||
+        name.endsWith('.webp')) {
       return Icons.image;
     }
 
@@ -88,8 +89,11 @@ class _RecordsScreenState extends State<RecordsScreen> {
     final name = fileName.toLowerCase();
 
     if (name.endsWith('.pdf')) return 'application/pdf';
-    if (name.endsWith('.jpg') || name.endsWith('.jpeg')) return 'image/jpeg';
+    if (name.endsWith('.jpg') || name.endsWith('.jpeg')) {
+      return 'image/jpeg';
+    }
     if (name.endsWith('.png')) return 'image/png';
+    if (name.endsWith('.webp')) return 'image/webp';
 
     return 'application/octet-stream';
   }
@@ -136,28 +140,94 @@ class _RecordsScreenState extends State<RecordsScreen> {
     return null;
   }
 
-  String safeDownloadName(String fileName, String fileUrl) {
-    var name = fileName.trim();
+  String detectFileExtension({
+    required String fileUrl,
+    required Uint8List bytes,
+  }) {
+    final lowerUrl = fileUrl.toLowerCase();
 
-    if (name.isEmpty || name == 'uploaded_file') {
-      final dataHeader = fileUrl.startsWith('data:')
-          ? fileUrl.substring(0, fileUrl.indexOf(',') == -1
-          ? fileUrl.length
-          : fileUrl.indexOf(','))
-          : '';
+    if (lowerUrl.startsWith('data:application/pdf')) return '.pdf';
+    if (lowerUrl.startsWith('data:image/png')) return '.png';
+    if (lowerUrl.startsWith('data:image/jpeg') ||
+        lowerUrl.startsWith('data:image/jpg')) {
+      return '.jpg';
+    }
+    if (lowerUrl.startsWith('data:image/webp')) return '.webp';
 
-      if (dataHeader.contains('application/pdf')) {
-        name = 'medical_report.pdf';
-      } else if (dataHeader.contains('image/png')) {
-        name = 'medical_report.png';
-      } else if (dataHeader.contains('image/jpeg')) {
-        name = 'medical_report.jpg';
-      } else {
-        name = 'medical_report';
+    if (bytes.length >= 4 &&
+        bytes[0] == 0x25 &&
+        bytes[1] == 0x50 &&
+        bytes[2] == 0x44 &&
+        bytes[3] == 0x46) {
+      return '.pdf';
+    }
+
+    if (bytes.length >= 8 &&
+        bytes[0] == 0x89 &&
+        bytes[1] == 0x50 &&
+        bytes[2] == 0x4E &&
+        bytes[3] == 0x47 &&
+        bytes[4] == 0x0D &&
+        bytes[5] == 0x0A &&
+        bytes[6] == 0x1A &&
+        bytes[7] == 0x0A) {
+      return '.png';
+    }
+
+    if (bytes.length >= 3 &&
+        bytes[0] == 0xFF &&
+        bytes[1] == 0xD8 &&
+        bytes[2] == 0xFF) {
+      return '.jpg';
+    }
+
+    if (bytes.length >= 12 &&
+        bytes[0] == 0x52 &&
+        bytes[1] == 0x49 &&
+        bytes[2] == 0x46 &&
+        bytes[3] == 0x46 &&
+        bytes[8] == 0x57 &&
+        bytes[9] == 0x45 &&
+        bytes[10] == 0x42 &&
+        bytes[11] == 0x50) {
+      return '.webp';
+    }
+
+    final cleanPath = fileUrl.split('?').first.split('#').first.toLowerCase();
+
+    for (final extension in const ['.pdf', '.jpg', '.jpeg', '.png', '.webp']) {
+      if (cleanPath.endsWith(extension)) {
+        return extension == '.jpeg' ? '.jpg' : extension;
       }
     }
 
-    return name.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
+    return '';
+  }
+
+  String safeDownloadName({
+    required String fileName,
+    required String fileUrl,
+    required Uint8List bytes,
+  }) {
+    var name = fileName.trim();
+
+    if (name.isEmpty || name == 'uploaded_file') {
+      name = 'medical_report';
+    }
+
+    name = name.replaceAll(
+      RegExp(r'\.(pdf|jpg|jpeg|png|webp)$', caseSensitive: false),
+      '',
+    );
+
+    final extension = detectFileExtension(
+      fileUrl: fileUrl,
+      bytes: bytes,
+    );
+
+    final cleanName = name.replaceAll(RegExp(r'[\/:*?"<>|]'), '_');
+
+    return extension.isEmpty ? cleanName : '$cleanName$extension';
   }
 
   Future<void> downloadFile({
@@ -183,7 +253,11 @@ class _RecordsScreenState extends State<RecordsScreen> {
       return;
     }
 
-    final safeName = safeDownloadName(fileName, cleanUrl);
+    final safeName = safeDownloadName(
+      fileName: fileName,
+      fileUrl: cleanUrl,
+      bytes: bytes,
+    );
 
     try {
       if (kIsWeb) {
@@ -327,7 +401,7 @@ class _RecordsScreenState extends State<RecordsScreen> {
 
     final result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
-      allowedExtensions: const ['pdf', 'jpg', 'jpeg', 'png'],
+      allowedExtensions: const ['pdf', 'jpg', 'jpeg', 'png', 'webp'],
       withData: true,
     );
 
@@ -458,7 +532,7 @@ class _RecordsScreenState extends State<RecordsScreen> {
           ),
           const SizedBox(height: 6),
           const Text(
-            'PDF, JPG, JPEG, PNG',
+            'PDF, JPG, JPEG, PNG, WEBP',
             style: TextStyle(color: Colors.grey),
           ),
           const SizedBox(height: 16),

@@ -305,9 +305,7 @@ class _ManageMedicalRecordsScreenState
   }) {
     final cleanTitle = title.trim();
 
-    if (cleanTitle.isNotEmpty &&
-        RegExp(r'\.(pdf|jpg|jpeg|png|webp)$', caseSensitive: false)
-            .hasMatch(cleanTitle)) {
+    if (cleanTitle.isNotEmpty) {
       return cleanTitle;
     }
 
@@ -319,7 +317,97 @@ class _ManageMedicalRecordsScreenState
       return Uri.decodeComponent(pathName);
     }
 
-    return cleanTitle.isEmpty ? 'medical_report.pdf' : cleanTitle;
+    return 'medical_report';
+  }
+
+  String _detectFileExtension({
+    required String fileUrl,
+    required Uint8List bytes,
+  }) {
+    final lowerUrl = fileUrl.toLowerCase();
+
+    if (lowerUrl.startsWith('data:application/pdf')) return '.pdf';
+    if (lowerUrl.startsWith('data:image/png')) return '.png';
+    if (lowerUrl.startsWith('data:image/jpeg') ||
+        lowerUrl.startsWith('data:image/jpg')) {
+      return '.jpg';
+    }
+    if (lowerUrl.startsWith('data:image/webp')) return '.webp';
+
+    if (bytes.length >= 4 &&
+        bytes[0] == 0x25 &&
+        bytes[1] == 0x50 &&
+        bytes[2] == 0x44 &&
+        bytes[3] == 0x46) {
+      return '.pdf';
+    }
+
+    if (bytes.length >= 8 &&
+        bytes[0] == 0x89 &&
+        bytes[1] == 0x50 &&
+        bytes[2] == 0x4E &&
+        bytes[3] == 0x47 &&
+        bytes[4] == 0x0D &&
+        bytes[5] == 0x0A &&
+        bytes[6] == 0x1A &&
+        bytes[7] == 0x0A) {
+      return '.png';
+    }
+
+    if (bytes.length >= 3 &&
+        bytes[0] == 0xFF &&
+        bytes[1] == 0xD8 &&
+        bytes[2] == 0xFF) {
+      return '.jpg';
+    }
+
+    if (bytes.length >= 12 &&
+        bytes[0] == 0x52 &&
+        bytes[1] == 0x49 &&
+        bytes[2] == 0x46 &&
+        bytes[3] == 0x46 &&
+        bytes[8] == 0x57 &&
+        bytes[9] == 0x45 &&
+        bytes[10] == 0x42 &&
+        bytes[11] == 0x50) {
+      return '.webp';
+    }
+
+    final cleanPath = fileUrl.split('?').first.split('#').first.toLowerCase();
+
+    for (final extension in const ['.pdf', '.jpg', '.jpeg', '.png', '.webp']) {
+      if (cleanPath.endsWith(extension)) {
+        return extension == '.jpeg' ? '.jpg' : extension;
+      }
+    }
+
+    return '';
+  }
+
+  String _safeDownloadName({
+    required String fileName,
+    required String fileUrl,
+    required Uint8List bytes,
+  }) {
+    var name = fileName.trim();
+
+    if (name.isEmpty) {
+      name = 'medical_report';
+    }
+
+    name = name.replaceAll(
+      RegExp(r'\.(pdf|jpg|jpeg|png|webp)$', caseSensitive: false),
+      '',
+    );
+
+    final extension = _detectFileExtension(
+      fileUrl: fileUrl,
+      bytes: bytes,
+    );
+
+    final cleanName = name.replaceAll(RegExp(r'[\/:*?"<>|]'), '_');
+
+    return extension.isEmpty ? cleanName : '$cleanName$extension';
   }
 
   String _mimeType(String fileName) {
@@ -399,11 +487,17 @@ class _ManageMedicalRecordsScreenState
       return;
     }
 
+    final safeName = _safeDownloadName(
+      fileName: fileName,
+      fileUrl: fileUrl,
+      bytes: bytes,
+    );
+
     try {
       final path = await saveDownloadedBytes(
         bytes: bytes,
-        fileName: fileName,
-        mimeType: _mimeType(fileName),
+        fileName: safeName,
+        mimeType: _mimeType(safeName),
         dialogTitle:
         AppStrings.isArabic ? 'حفظ التقرير الطبي' : 'Save medical report',
       );
@@ -676,13 +770,13 @@ class _ManageMedicalRecordsScreenState
           final int recordId =
               int.tryParse(record['recordId']?.toString() ?? '0') ?? 0;
 
-          final String title = _translateRecordTitle(
-            _textValue(
-              record,
-              'title',
-              fallback: AppStrings.medicalRecord,
-            ),
+          final String rawTitle = _textValue(
+            record,
+            'title',
+            fallback: AppStrings.medicalRecord,
           );
+
+          final String title = _translateRecordTitle(rawTitle);
 
           final String description = _translateRecordText(
             _textValue(record, 'description'),
@@ -703,7 +797,7 @@ class _ManageMedicalRecordsScreenState
           );
 
           final String fileName = _fileNameFromRecord(
-            title: title,
+            title: rawTitle,
             fileUrl: fileUrl,
           );
 
