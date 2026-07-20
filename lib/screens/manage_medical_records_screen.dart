@@ -1,7 +1,9 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:file_saver/file_saver.dart' as fs;
 import 'package:http/http.dart' as http;
 import 'package:open_filex/open_filex.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -9,6 +11,8 @@ import 'package:url_launcher/url_launcher.dart';
 import '../language/app_strings.dart';
 import '../services/api_service.dart';
 import '../services/file_download_helper.dart';
+import '../services/local_file_writer_stub.dart'
+if (dart.library.io) '../services/local_file_writer_io.dart';
 
 class ManageMedicalRecordsScreen extends StatefulWidget {
   const ManageMedicalRecordsScreen({super.key});
@@ -28,6 +32,7 @@ class _ManageMedicalRecordsScreenState
   bool _isLoading = true;
   bool _isRefreshing = false;
   String? _loadError;
+  final Set<int> _downloadingRecordIds = <int>{};
 
   @override
   void initState() {
@@ -433,6 +438,80 @@ class _ManageMedicalRecordsScreenState
     }
   }
 
+  String _fileUrlFromRecord(Map<String, dynamic> record, int recordId) {
+    const possibleKeys = <String>[
+      'fileUrl',
+      'FileUrl',
+      'fileURL',
+      'filePath',
+      'FilePath',
+      'attachmentUrl',
+      'AttachmentUrl',
+      'documentUrl',
+      'DocumentUrl',
+    ];
+
+    for (final key in possibleKeys) {
+      final value = record[key]?.toString().trim() ?? '';
+      if (value.isNotEmpty && value.toLowerCase() != 'null') return value;
+    }
+
+    if (recordId > 0) {
+      return 'http://medlink-rana.premiumasp.net/api/MedicalRecords/download/$recordId';
+    }
+
+    return '';
+  }
+
+  Future<void> _downloadRecord({
+    required int recordId,
+    required String fileUrl,
+    required String fileName,
+  }) async {
+    if (_downloadingRecordIds.contains(recordId)) return;
+
+    setState(() => _downloadingRecordIds.add(recordId));
+    try {
+      final downloadUrl =
+          '${ApiService.baseUrl}/MedicalRecords/$recordId/download';
+      final uri = Uri.parse(downloadUrl);
+
+      final opened = await launchUrl(
+        uri,
+        mode: kIsWeb
+            ? LaunchMode.platformDefault
+            : LaunchMode.externalApplication,
+        webOnlyWindowName: '_blank',
+      );
+
+      if (!opened) {
+        await _saveFile(
+          fileUrl: downloadUrl,
+          fileName: fileName,
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _downloadingRecordIds.remove(recordId));
+      }
+    }
+  }
+
+  String _resolvedFileUrl(String fileUrl) {
+    final value = fileUrl.trim().replaceAll('\\', '/');
+
+    if (value.isEmpty || value.startsWith('data:')) return value;
+
+    final uri = Uri.tryParse(value);
+    if (uri != null && uri.hasScheme && uri.host.isNotEmpty) {
+      return value;
+    }
+
+    const apiOrigin = 'http://medlink-rana.premiumasp.net';
+    final cleanPath = value.startsWith('/') ? value : '/$value';
+    return '$apiOrigin$cleanPath';
+  }
+
   bool _isImageFile(String fileName, String fileUrl) {
     final value = '$fileName $fileUrl'.toLowerCase();
 
@@ -444,22 +523,45 @@ class _ManageMedicalRecordsScreenState
   }
 
   Future<Uint8List?> _loadFileBytes(String fileUrl) async {
-    final cleanUrl = fileUrl.trim();
+    final cleanUrl = _resolvedFileUrl(fileUrl);
 
     if (cleanUrl.startsWith('data:')) {
       return _decodeDataFile(cleanUrl);
     }
 
-    final uri = Uri.tryParse(cleanUrl);
-    if (uri == null) return null;
+    final urls = <String>[cleanUrl];
+    final downloadMatch = RegExp(
+      r'/api/MedicalRecords/download/(\d+)$',
+      caseSensitive: false,
+    ).firstMatch(cleanUrl);
 
-    try {
-      final response =
-      await http.get(uri).timeout(const Duration(seconds: 30));
-      if (response.statusCode == 200) {
-        return response.bodyBytes;
+    if (downloadMatch != null) {
+      final id = downloadMatch.group(1)!;
+      const origin = 'http://medlink-rana.premiumasp.net';
+      urls.add('$origin/api/MedicalRecords/$id/download');
+      urls.add('$origin/api/MedicalRecords/DownloadFile/$id');
+      urls.add('$origin/api/MedicalRecords/$id');
+    }
+
+    for (final url in urls) {
+      final uri = Uri.tryParse(url);
+      if (uri == null) continue;
+
+      try {
+        final response =
+        await http.get(uri).timeout(const Duration(seconds: 30));
+        final contentType = response.headers['content-type']?.toLowerCase() ?? '';
+        final isJson = contentType.contains('application/json');
+
+        if (response.statusCode == 200 &&
+            response.bodyBytes.isNotEmpty &&
+            !isJson) {
+          return response.bodyBytes;
+        }
+      } catch (_) {
+        // جرّب مسار التنزيل التالي.
       }
-    } catch (_) {}
+    }
 
     return null;
   }
@@ -494,13 +596,34 @@ class _ManageMedicalRecordsScreenState
     );
 
     try {
-      final path = await saveDownloadedBytes(
-        bytes: bytes,
-        fileName: safeName,
-        mimeType: _mimeType(safeName),
-        dialogTitle:
-        AppStrings.isArabic ? 'حفظ التقرير الطبي' : 'Save medical report',
-      );
+      String? path;
+
+      if (kIsWeb) {
+        path = await saveDownloadedBytes(
+          bytes: bytes,
+          fileName: safeName,
+          mimeType: _mimeType(safeName),
+          dialogTitle: AppStrings.isArabic
+              ? 'حفظ التقرير الطبي'
+              : 'Save medical report',
+        );
+      } else {
+        final dotIndex = safeName.lastIndexOf('.');
+        final baseName = dotIndex > 0
+            ? safeName.substring(0, dotIndex)
+            : safeName;
+        final extension = dotIndex > 0
+            ? safeName.substring(dotIndex + 1)
+            : '';
+
+        path = await fs.FileSaver.instance.saveFile(
+          name: baseName,
+          bytes: bytes,
+          fileExtension: extension,
+          mimeType: fs.MimeType.custom,
+          customMimeType: _mimeType(safeName),
+        );
+      }
 
       if (path == null) {
         // المستخدم أغلق نافذة الحفظ على الهاتف أو سطح المكتب.
@@ -548,7 +671,7 @@ class _ManageMedicalRecordsScreenState
     required String fileUrl,
     required String fileName,
   }) async {
-    final cleanUrl = fileUrl.trim();
+    final cleanUrl = _resolvedFileUrl(fileUrl);
 
     if (cleanUrl.isEmpty) {
       _showMessage(
@@ -608,27 +731,72 @@ class _ManageMedicalRecordsScreenState
         return;
       }
 
-      await _saveFile(
-        fileUrl: cleanUrl,
+      if (kIsWeb) {
+        _showMessage(
+          AppStrings.isArabic ? 'تعذر فتح الملف' : 'Could not open the file',
+        );
+        return;
+      }
+
+      final previewName = _safeDownloadName(
         fileName: fileName,
-        openAfterSaving: true,
+        fileUrl: cleanUrl,
+        bytes: bytes,
       );
+      final previewPath = await writeBytesToTemporaryFile(
+        previewName,
+        bytes,
+      );
+      final openResult = await OpenFilex.open(previewPath);
+
+      if (openResult.type != ResultType.done) {
+        _showMessage(
+          AppStrings.isArabic ? 'تعذر فتح الملف' : 'Could not open the file',
+        );
+      }
       return;
     }
 
     final uri = Uri.tryParse(cleanUrl);
 
-    if (uri != null &&
+    if (kIsWeb &&
+        uri != null &&
         await canLaunchUrl(uri) &&
         await launchUrl(uri, mode: LaunchMode.externalApplication)) {
       return;
     }
 
-    await _saveFile(
-      fileUrl: cleanUrl,
+    if (kIsWeb) {
+      _showMessage(
+        AppStrings.isArabic ? 'تعذر فتح الملف' : 'Could not open the file',
+      );
+      return;
+    }
+
+    final bytes = await _loadFileBytes(cleanUrl);
+    if (bytes == null || bytes.isEmpty) {
+      _showMessage(
+        AppStrings.isArabic ? 'تعذر فتح الملف' : 'Could not open the file',
+      );
+      return;
+    }
+
+    final previewName = _safeDownloadName(
       fileName: fileName,
-      openAfterSaving: true,
+      fileUrl: cleanUrl,
+      bytes: bytes,
     );
+    final previewPath = await writeBytesToTemporaryFile(
+      previewName,
+      bytes,
+    );
+    final openResult = await OpenFilex.open(previewPath);
+
+    if (openResult.type != ResultType.done) {
+      _showMessage(
+        AppStrings.isArabic ? 'تعذر فتح الملف' : 'Could not open the file',
+      );
+    }
   }
 
   Widget _buildLoading() {
@@ -790,11 +958,9 @@ class _ManageMedicalRecordsScreenState
             _textValue(record, 'status'),
           );
 
-          final String fileUrl = _textValue(
-            record,
-            'fileUrl',
-            fallback: _textValue(record, 'FileUrl'),
-          );
+          final String fileUrl = _fileUrlFromRecord(record, recordId);
+          final bool isDownloading =
+          _downloadingRecordIds.contains(recordId);
 
           final String fileName = _fileNameFromRecord(
             title: rawTitle,
@@ -811,6 +977,7 @@ class _ManageMedicalRecordsScreenState
             status: status,
             fileName: fileName,
             hasFile: fileUrl.isNotEmpty,
+            isDownloading: isDownloading,
             recordId: recordId,
             textDirection: textDirection,
             textAlign: textAlign,
@@ -821,9 +988,10 @@ class _ManageMedicalRecordsScreenState
               fileUrl: fileUrl,
               fileName: fileName,
             ),
-            onDownload: fileUrl.isEmpty
+            onDownload: fileUrl.isEmpty || isDownloading
                 ? null
-                : () => _saveFile(
+                : () => _downloadRecord(
+              recordId: recordId,
               fileUrl: fileUrl,
               fileName: fileName,
             ),
@@ -846,6 +1014,7 @@ class _MedicalRecordCard extends StatelessWidget {
     required this.status,
     required this.fileName,
     required this.hasFile,
+    required this.isDownloading,
     required this.recordId,
     required this.textDirection,
     required this.textAlign,
@@ -865,6 +1034,7 @@ class _MedicalRecordCard extends StatelessWidget {
   final String status;
   final String fileName;
   final bool hasFile;
+  final bool isDownloading;
   final int recordId;
   final TextDirection textDirection;
   final TextAlign textAlign;
@@ -1002,7 +1172,16 @@ class _MedicalRecordCard extends StatelessWidget {
                 tooltip:
                 AppStrings.isArabic ? 'تنزيل التقرير' : 'Download report',
                 onPressed: onDownload,
-                icon: Icon(
+                icon: isDownloading
+                    ? const SizedBox(
+                  width: 22,
+                  height: 22,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2.5,
+                    color: Colors.blue,
+                  ),
+                )
+                    : Icon(
                   Icons.download,
                   color: hasFile ? Colors.blue : Colors.grey,
                 ),

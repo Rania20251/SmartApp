@@ -900,13 +900,10 @@ class ApiService {
 
               final fixedImage = fixImageUrl(rawImage);
 
-              doctor['image'] = forceRefresh
-                  ? withImageCacheVersion(
-                fixedImage,
-                version: DateTime.now()
-                    .millisecondsSinceEpoch,
-              )
-                  : fixedImage;
+              // نحافظ على نفس رابط الصورة أثناء التحديث
+              // الصامت، لكي يستفيد CachedNetworkImage من الكاش
+              // ولا يعيد تنزيل صور الأطباء كل مرة.
+              doctor['image'] = fixedImage;
 
               final rawDoctorId =
                   doctor['doctorId'] ??
@@ -1310,11 +1307,18 @@ class ApiService {
       createdAppointment['SpecialtyName'] = specialtyName.trim();
     }
 
-    if (returnedDoctorImage.isEmpty && doctorImage.trim().isNotEmpty) {
+    if (returnedDoctorImage.isNotEmpty) {
+      final fixedDoctorImage = fixImageUrl(returnedDoctorImage);
+      createdAppointment['doctorImage'] = fixedDoctorImage;
+      createdAppointment['DoctorImage'] = fixedDoctorImage;
+      createdAppointment['image'] = fixedDoctorImage;
+      createdAppointment['Image'] = fixedDoctorImage;
+    } else if (doctorImage.trim().isNotEmpty) {
       final fixedDoctorImage = fixImageUrl(doctorImage);
       createdAppointment['doctorImage'] = fixedDoctorImage;
       createdAppointment['DoctorImage'] = fixedDoctorImage;
       createdAppointment['image'] = fixedDoctorImage;
+      createdAppointment['Image'] = fixedDoctorImage;
     }
 
     final currentUserList = List<dynamic>.from(
@@ -1531,7 +1535,7 @@ class ApiService {
           );
         }
 
-        final appointments = decoded.map<dynamic>((appointment) {
+        var appointments = decoded.map<dynamic>((appointment) {
           if (appointment is! Map) return appointment;
 
           final copy = Map<String, dynamic>.from(appointment);
@@ -1551,6 +1555,31 @@ class ApiService {
 
           return copy;
         }).toList();
+
+        // بعض نسخ السيرفر تعيد قائمة فارغة من
+        // patient/{userId} رغم وجود مواعيد. في هذه الحالة
+        // نجلب القائمة العامة مرة ونأخذ مواعيد المستخد فقط.
+        if (appointments.isEmpty) {
+          final all = await getAllAppointments(
+            forceRefresh: forceRefresh,
+          );
+
+          if (UserSession.userId != userId) {
+            return <dynamic>[];
+          }
+
+          final id = userId.toString();
+          appointments = all.where((appointment) {
+            if (appointment is! Map) return false;
+
+            return appointment['patientId']?.toString() == id ||
+                appointment['PatientId']?.toString() == id;
+          }).map<dynamic>((appointment) {
+            return appointment is Map
+                ? Map<String, dynamic>.from(appointment)
+                : appointment;
+          }).toList();
+        }
 
         if (UserSession.userId != userId) {
           return <dynamic>[];

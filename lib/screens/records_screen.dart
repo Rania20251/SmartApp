@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:file_saver/file_saver.dart' as fs;
 import 'package:url_launcher/url_launcher.dart';
 import 'package:http/http.dart' as http;
 import 'package:open_filex/open_filex.dart';
@@ -12,6 +13,8 @@ import '../language/app_strings.dart';
 import '../services/api_service.dart';
 import '../services/file_downloader_stub.dart'
 if (dart.library.html) '../services/file_downloader_web.dart';
+import '../services/local_file_writer_stub.dart'
+if (dart.library.io) '../services/local_file_writer_io.dart';
 import '../services/user_session.dart';
 
 class RecordsScreen extends StatefulWidget {
@@ -242,25 +245,25 @@ class _RecordsScreenState extends State<RecordsScreen> {
       return;
     }
 
-    final bytes = await loadFileBytes(cleanUrl);
-
-    if (bytes == null || bytes.isEmpty) {
-      showMessage(
-        AppStrings.isArabic
-            ? 'تعذر تحميل الملف'
-            : 'Could not download the file',
-      );
-      return;
-    }
-
-    final safeName = safeDownloadName(
-      fileName: fileName,
-      fileUrl: cleanUrl,
-      bytes: bytes,
-    );
-
     try {
       if (kIsWeb) {
+        final bytes = await loadFileBytes(cleanUrl);
+
+        if (bytes == null || bytes.isEmpty) {
+          showMessage(
+            AppStrings.isArabic
+                ? 'تعذر تحميل الملف'
+                : 'Could not download the file',
+          );
+          return;
+        }
+
+        final safeName = safeDownloadName(
+          fileName: fileName,
+          fileUrl: cleanUrl,
+          bytes: bytes,
+        );
+
         await downloadBytesOnWeb(
           bytes: bytes,
           fileName: safeName,
@@ -275,16 +278,41 @@ class _RecordsScreenState extends State<RecordsScreen> {
         return;
       }
 
-      final path = await FilePicker.platform.saveFile(
-        dialogTitle:
-        AppStrings.isArabic ? 'حفظ التقرير الطبي' : 'Save medical report',
-        fileName: safeName,
+      final bytes = await loadFileBytes(cleanUrl);
+
+      if (bytes == null || bytes.isEmpty) {
+        showMessage(
+          AppStrings.isArabic
+              ? 'تعذر تحميل الملف'
+              : 'Could not download the file',
+        );
+        return;
+      }
+
+      final safeName = safeDownloadName(
+        fileName: fileName,
+        fileUrl: cleanUrl,
         bytes: bytes,
       );
 
-      if (path == null || path.trim().isEmpty) {
-        return;
-      }
+      final dotIndex = safeName.lastIndexOf('.');
+      final baseName = dotIndex > 0
+          ? safeName.substring(0, dotIndex)
+          : safeName;
+      final extension = dotIndex > 0
+          ? safeName.substring(dotIndex + 1)
+          : '';
+
+      // السهم يفتح نافذة Save As الأصلية على أندرويد.
+      final path = await fs.FileSaver.instance.saveAs(
+        name: baseName,
+        bytes: bytes,
+        fileExtension: extension,
+        mimeType: fs.MimeType.custom,
+        customMimeType: mimeType(safeName),
+      );
+
+      if (path == null || path.trim().isEmpty) return;
 
       if (openAfterSaving) {
         final result = await OpenFilex.open(path);
@@ -309,6 +337,42 @@ class _RecordsScreenState extends State<RecordsScreen> {
         AppStrings.isArabic
             ? 'تعذر حفظ التقرير'
             : 'Could not save the report',
+      );
+    }
+  }
+
+  Future<void> downloadRecord({
+    required int recordId,
+    required String fileName,
+  }) async {
+    if (recordId <= 0) {
+      showMessage(AppStrings.noFileFound);
+      return;
+    }
+
+    final downloadUrl =
+        '${ApiService.baseUrl}/MedicalRecords/$recordId/download';
+    final uri = Uri.parse(downloadUrl);
+
+    try {
+      final opened = await launchUrl(
+        uri,
+        mode: kIsWeb
+            ? LaunchMode.platformDefault
+            : LaunchMode.externalApplication,
+        webOnlyWindowName: '_blank',
+      );
+
+      if (!opened) {
+        await downloadFile(
+          fileUrl: downloadUrl,
+          fileName: fileName,
+        );
+      }
+    } catch (_) {
+      await downloadFile(
+        fileUrl: downloadUrl,
+        fileName: fileName,
       );
     }
   }
@@ -373,27 +437,63 @@ class _RecordsScreenState extends State<RecordsScreen> {
         return;
       }
 
-      await downloadFile(
-        fileUrl: url,
+      if (kIsWeb) {
+        showMessage(AppStrings.couldNotOpenFile);
+        return;
+      }
+
+      final previewName = safeDownloadName(
         fileName: fileName,
-        openAfterSaving: true,
+        fileUrl: url,
+        bytes: bytes,
       );
+      final previewPath = await writeBytesToTemporaryFile(
+        previewName,
+        bytes,
+      );
+      final openResult = await OpenFilex.open(previewPath);
+
+      if (openResult.type != ResultType.done) {
+        showMessage(AppStrings.couldNotOpenFile);
+      }
       return;
     }
 
     final uri = Uri.tryParse(url);
 
-    if (uri != null &&
+    if (kIsWeb &&
+        uri != null &&
         await canLaunchUrl(uri) &&
         await launchUrl(uri, mode: LaunchMode.externalApplication)) {
       return;
     }
 
-    await downloadFile(
-      fileUrl: url,
+    // العين للعرض فقط: إذا تعذر فتح الرابط، نفتح نسخة مؤقتة دون نافذة حفظ.
+    if (kIsWeb) {
+      showMessage(AppStrings.couldNotOpenFile);
+      return;
+    }
+
+    final bytes = await loadFileBytes(url);
+    if (bytes == null || bytes.isEmpty) {
+      showMessage(AppStrings.couldNotOpenFile);
+      return;
+    }
+
+    final previewName = safeDownloadName(
       fileName: fileName,
-      openAfterSaving: true,
+      fileUrl: url,
+      bytes: bytes,
     );
+    final previewPath = await writeBytesToTemporaryFile(
+      previewName,
+      bytes,
+    );
+    final openResult = await OpenFilex.open(previewPath);
+
+    if (openResult.type != ResultType.done) {
+      showMessage(AppStrings.couldNotOpenFile);
+    }
   }
 
   Future<void> uploadReport() async {
@@ -674,8 +774,8 @@ class _RecordsScreenState extends State<RecordsScreen> {
                 icon: const Icon(Icons.download, color: Colors.blue),
                 onPressed: fileUrl.isEmpty
                     ? null
-                    : () => downloadFile(
-                  fileUrl: fileUrl,
+                    : () => downloadRecord(
+                  recordId: recordId,
                   fileName: fileName,
                 ),
               ),

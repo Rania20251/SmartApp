@@ -39,6 +39,7 @@ class _DoctorDetailsScreenState extends State<DoctorDetailsScreen> {
   bool isFavorite = false;
   bool isBooked = false;
   bool isBooking = false;
+  int userRating = 0;
 
   late final List<DateTime> dates;
   late final String shownName;
@@ -78,13 +79,203 @@ class _DoctorDetailsScreenState extends State<DoctorDetailsScreen> {
   String get favoriteKey =>
       'favorite_doctor_${UserSession.userId ?? 0}_${widget.doctorId}';
 
+  String get ratingKey =>
+      'doctor_rating_${UserSession.userId ?? 0}_${widget.doctorId}';
+
   Future<void> loadFavorite() async {
     prefs = await SharedPreferences.getInstance();
     if (!mounted) return;
 
     setState(() {
       isFavorite = prefs?.getBool(favoriteKey) ?? false;
+      userRating = prefs?.getInt(ratingKey) ?? 0;
     });
+  }
+
+  Future<void> showRatingDialog() async {
+    var selectedRating = userRating;
+
+    final result = await showDialog<int>(
+      context: context,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(22),
+              ),
+              title: Text(
+                AppStrings.isArabic
+                    ? 'قيّم الطبيب'
+                    : 'Rate this doctor',
+                textAlign: TextAlign.center,
+              ),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    AppStrings.isArabic
+                        ? 'اختر عدد النجوم'
+                        : 'Choose the number of stars',
+                    style: const TextStyle(color: Colors.grey),
+                  ),
+                  const SizedBox(height: 18),
+                  Directionality(
+                    textDirection: TextDirection.ltr,
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: List.generate(5, (index) {
+                        final star = index + 1;
+                        final selected = star <= selectedRating;
+
+                        return IconButton(
+                          tooltip: '$star',
+                          onPressed: () {
+                            setDialogState(() {
+                              selectedRating = star;
+                            });
+                          },
+                          icon: Icon(
+                            selected ? Icons.star : Icons.star_border,
+                            color: Colors.orange,
+                            size: 34,
+                          ),
+                        );
+                      }),
+                    ),
+                  ),
+                  if (selectedRating > 0) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      '$selectedRating / 5',
+                      style: const TextStyle(
+                        color: primary,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+              actionsAlignment: MainAxisAlignment.center,
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogContext),
+                  child: Text(
+                    AppStrings.isArabic ? 'إلغاء' : 'Cancel',
+                  ),
+                ),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: primary,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  onPressed: selectedRating == 0
+                      ? null
+                      : () => Navigator.pop(
+                    dialogContext,
+                    selectedRating,
+                  ),
+                  child: Text(
+                    AppStrings.isArabic ? 'إرسال التقييم' : 'Submit',
+                  ),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    if (result == null) return;
+
+    prefs ??= await SharedPreferences.getInstance();
+    await prefs!.setInt(ratingKey, result);
+
+    if (!mounted) return;
+    setState(() => userRating = result);
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          AppStrings.isArabic
+              ? 'شكراً، تم حفظ تقييمك'
+              : 'Thank you. Your rating was saved.',
+        ),
+      ),
+    );
+  }
+
+  Widget ratingCard() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFFE9E4FF)),
+      ),
+      child: Row(
+        textDirection:
+        AppStrings.isArabic ? TextDirection.rtl : TextDirection.ltr,
+        children: [
+          Container(
+            width: 46,
+            height: 46,
+            decoration: const BoxDecoration(
+              shape: BoxShape.circle,
+              color: Color(0xFFFFF3DD),
+            ),
+            child: const Icon(Icons.star, color: Colors.orange, size: 27),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: AppStrings.isArabic
+                  ? CrossAxisAlignment.end
+                  : CrossAxisAlignment.start,
+              children: [
+                Text(
+                  AppStrings.isArabic ? 'تقييمك للطبيب' : 'Your rating',
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 5),
+                Directionality(
+                  textDirection: TextDirection.ltr,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: List.generate(5, (index) {
+                      return Icon(
+                        index < userRating ? Icons.star : Icons.star_border,
+                        color: Colors.orange,
+                        size: 19,
+                      );
+                    }),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 10),
+          OutlinedButton(
+            onPressed: showRatingDialog,
+            style: OutlinedButton.styleFrom(
+              foregroundColor: primary,
+              side: const BorderSide(color: primary),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+            child: Text(
+              userRating == 0
+                  ? (AppStrings.isArabic ? 'قيّم' : 'Rate')
+                  : (AppStrings.isArabic ? 'تعديل' : 'Edit'),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> toggleFavorite() async {
@@ -506,6 +697,8 @@ class _DoctorDetailsScreenState extends State<DoctorDetailsScreen> {
                       ),
                     ),
                   ],
+                  const SizedBox(height: 18),
+                  ratingCard(),
                   const SizedBox(height: 24),
                   Text(
                     AppStrings.isArabic ? 'عن الطبيب' : 'About Doctor',

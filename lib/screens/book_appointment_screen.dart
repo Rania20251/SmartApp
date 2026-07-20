@@ -15,6 +15,7 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
   static const Color primary = Color(0xFF5B2EFF);
 
   int? selectedDoctorId;
+  dynamic selectedDoctor;
   DateTime? selectedDate;
   TimeOfDay? selectedTime;
 
@@ -52,6 +53,53 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
     }
 
     return fallback;
+  }
+
+  String doctorNameOf(dynamic doctor) {
+    return valueOf(
+      doctor,
+      ['fullName', 'FullName', 'doctorName', 'DoctorName', 'name', 'Name'],
+      AppStrings.doctor,
+    );
+  }
+
+  String specialtyOf(dynamic doctor) {
+    final direct = valueOf(
+      doctor,
+      ['specialty', 'Specialty', 'specialtyName', 'SpecialtyName'],
+      '',
+    );
+    if (direct.isNotEmpty) return direct;
+
+    if (doctor is Map) {
+      final specialty =
+          doctor['specialtyNavigation'] ?? doctor['SpecialtyNavigation'];
+      return valueOf(
+        specialty,
+        ['name', 'Name', 'specialtyName', 'SpecialtyName'],
+        AppStrings.specialist,
+      );
+    }
+
+    return AppStrings.specialist;
+  }
+
+  void selectDoctor(int? doctorId, List<dynamic> doctors) {
+    dynamic doctor;
+
+    if (doctorId != null) {
+      for (final item in doctors) {
+        if (doctorIdOf(item) == doctorId) {
+          doctor = item;
+          break;
+        }
+      }
+    }
+
+    setState(() {
+      selectedDoctorId = doctorId;
+      selectedDoctor = doctor;
+    });
   }
 
   Future<void> pickDate() async {
@@ -140,14 +188,24 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
     setState(() => isLoading = true);
 
     try {
+      final doctorName = doctorNameOf(selectedDoctor);
+      final specialtyName = specialtyOf(selectedDoctor);
+      final doctorImage = valueOf(
+        selectedDoctor,
+        ['image', 'Image', 'doctorImage', 'DoctorImage'],
+        '',
+      );
+
       await ApiService.bookAppointment(
         patientId: patientId,
         doctorId: doctorId,
         appointmentDate: finalAppointmentDate(),
+        doctorName: doctorName,
+        specialtyName: specialtyName,
+        doctorImage: doctorImage,
       );
 
       if (!mounted) return;
-
       Navigator.pop(context, true);
     } on AppointmentSlotTakenException {
       showMessage(
@@ -162,10 +220,106 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
             : 'Could not book the appointment. Please try again.',
       );
     } finally {
-      if (mounted) {
-        setState(() => isLoading = false);
-      }
+      if (mounted) setState(() => isLoading = false);
     }
+  }
+
+  Widget doctorInformationCard() {
+    if (selectedDoctor == null) return const SizedBox.shrink();
+
+    final name = AppStrings.doctorNameByLanguage(
+      doctorNameOf(selectedDoctor),
+    );
+    final specialty = AppStrings.specialtyByLanguage(
+      specialtyOf(selectedDoctor),
+    );
+    final phone = valueOf(
+      selectedDoctor,
+      ['phoneNumber', 'PhoneNumber', 'phone', 'Phone'],
+      '',
+    );
+    final email = valueOf(
+      selectedDoctor,
+      ['email', 'Email'],
+      '',
+    );
+
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(top: 14),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF3EFFF),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFD8CCFF)),
+      ),
+      child: Column(
+        crossAxisAlignment: AppStrings.isArabic
+            ? CrossAxisAlignment.end
+            : CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const CircleAvatar(
+                radius: 23,
+                backgroundColor: Color(0xFFE2D9FF),
+                child: Icon(Icons.person, color: primary, size: 28),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: AppStrings.isArabic
+                      ? CrossAxisAlignment.end
+                      : CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      specialty,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(color: Colors.grey),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          if (phone.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            informationRow(Icons.phone_outlined, phone),
+          ],
+          if (email.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            informationRow(Icons.email_outlined, email),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget informationRow(IconData icon, String value) {
+    return Row(
+      children: [
+        Icon(icon, size: 19, color: primary),
+        const SizedBox(width: 9),
+        Expanded(
+          child: Text(
+            value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+      ],
+    );
   }
 
   @override
@@ -237,37 +391,24 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
                         ),
                         items: doctors.map<DropdownMenuItem<int>>((doctor) {
                           final id = doctorIdOf(doctor);
-                          final name = valueOf(
-                            doctor,
-                            ['fullName', 'FullName', 'name', 'Name'],
-                            AppStrings.doctor,
-                          );
-                          final specialty = valueOf(
-                            doctor,
-                            [
-                              'specialty',
-                              'Specialty',
-                              'specialtyName',
-                              'SpecialtyName',
-                            ],
-                            AppStrings.specialist,
+                          final name = AppStrings.doctorNameByLanguage(
+                            doctorNameOf(doctor),
                           );
 
                           return DropdownMenuItem<int>(
                             value: id,
                             child: Text(
-                              '${AppStrings.doctorNameByLanguage(name)} - '
-                                  '${AppStrings.specialtyByLanguage(specialty)}',
+                              name,
+                              maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                             ),
                           );
                         }).toList(),
                         onChanged: isLoading
                             ? null
-                            : (value) {
-                          setState(() => selectedDoctorId = value);
-                        },
+                            : (value) => selectDoctor(value, doctors),
                       ),
+                      doctorInformationCard(),
                       const SizedBox(height: 16),
                       InkWell(
                         onTap: isLoading ? null : pickDate,

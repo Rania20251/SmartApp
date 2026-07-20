@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -1094,8 +1095,6 @@ class _DoctorCardState extends State<DoctorCard> {
     }
 
     if (image.startsWith('http://') || image.startsWith('https://')) {
-      // على Flutter Web قد يفشل CachedNetworkImage مع صور السيرفر
-      // بسبب CORS، بينما Image.network باستخدام عنصر HTML يعرضها مباشرة.
       return Container(
         width: 60,
         height: 60,
@@ -1104,7 +1103,8 @@ class _DoctorCardState extends State<DoctorCard> {
           color: Color(0xFFEDE7FF),
         ),
         clipBehavior: Clip.antiAlias,
-        child: Image.network(
+        child: kIsWeb
+            ? Image.network(
           image,
           key: ValueKey<String>(image),
           width: 60,
@@ -1118,6 +1118,19 @@ class _DoctorCardState extends State<DoctorCard> {
             return defaultImage();
           },
           errorBuilder: (_, __, ___) => defaultImage(),
+        )
+            : CachedNetworkImage(
+          imageUrl: image,
+          key: ValueKey<String>(image),
+          width: 60,
+          height: 60,
+          fit: BoxFit.cover,
+          alignment: Alignment.topCenter,
+          fadeInDuration: Duration.zero,
+          fadeOutDuration: Duration.zero,
+          useOldImageOnUrlChange: true,
+          placeholder: (_, __) => defaultImage(),
+          errorWidget: (_, __, ___) => defaultImage(),
         ),
       );
     }
