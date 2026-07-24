@@ -34,8 +34,8 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
   String? _filteredAppointmentsQuery;
 
   static final RegExp _spacesRegex = RegExp(r'\s+');
-  static final RegExp _arabicMarksRegex = RegExp(r'[ظ‘ظژظ‹ظڈظŒظگظچظ’ظ€]');
-  static final RegExp _doctorTitlePunctuationRegex = RegExp(r'[.طŒ,:ط›]');
+  static final RegExp _arabicMarksRegex = RegExp(r'[ًٌٍَُِّْـ]');
+  static final RegExp _doctorTitlePunctuationRegex = RegExp(r'[.،,:؛]');
 
   static const List<String> _monthsEn = <String>[
     'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
@@ -43,8 +43,8 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
   ];
 
   static const List<String> _monthsAr = <String>[
-    'ظٹظ†ط§ظٹط±', 'ظپط¨ط±ط§ظٹط±', 'ظ…ط§ط±ط³', 'ط£ط¨ط±ظٹظ„', 'ظ…ط§ظٹظˆ', 'ظٹظˆظ†ظٹظˆ',
-    'ظٹظˆظ„ظٹظˆ', 'ط£ط؛ط³ط·ط³', 'ط³ط¨طھظ…ط¨ط±', 'ط£ظƒطھظˆط¨ط±', 'ظ†ظˆظپظ…ط¨ط±', 'ط¯ظٹط³ظ…ط¨ط±',
+    'يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو',
+    'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر',
   ];
 
   final TextEditingController searchController = TextEditingController();
@@ -60,7 +60,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
       _onAppointmentsChanged,
     );
 
-    // ظ†ظ†طھط¸ط± طھط­ظ…ظٹظ„ ط§ظ„ظ…ط³طھط®ط¯ظ…طŒ ط«ظ… ظ†ط¬ظ„ط¨ ظ…ظˆط§ط¹ظٹط¯ظ‡ ظ…ط¨ط§ط´ط±ط© ظ…ظ† ط§ظ„ط³ظٹط±ظپط±.
+    // ننتظر تحميل المستخدم، ثم نجلب مواعيده مباشرة من السيرفر.
     unawaited(_loadAppointmentsOnOpen());
   }
 
@@ -70,7 +70,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
 
       final userId = UserSession.userId;
       if (userId != null && userId > 0) {
-        // ط§ط¹ط±ط¶ ظ…ط§ ظپظٹ ط§ظ„ظƒط§ط´ ظپظˆط±ط§ظ‹.
+        // اعرض ما في الكاش فوراً.
         await loadAppointments(
           showSmallLoading: true,
           forceRefresh: false,
@@ -78,7 +78,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
 
         if (!mounted) return;
 
-        // ط­ط¯ظ‘ط« ظ…ظ† ط§ظ„ط³ظٹط±ظپط± طھظ„ظ‚ط§ط¦ظٹط§ظ‹ ط¯ط§ط®ظ„ ظ†ظپط³ ط§ظ„طµظپط­ط©.
+        // حدّث من السيرفر تلقائياً داخل نفس الصفحة.
         await loadAppointments(
           showSmallLoading: allAppointments.isEmpty,
           forceRefresh: true,
@@ -121,21 +121,21 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
         errorMessage = null;
       });
     } catch (_) {
-      // ظ†ط¨ظ‚ظٹ ط§ظ„ظ…ظˆط§ط¹ظٹط¯ ط§ظ„ط­ط§ظ„ظٹط© ط¸ط§ظ‡ط±ط© ط¥ط°ط§ طھط£ط®ط± ط£ظˆ ظپط´ظ„ ط§ظ„ط³ظٹط±ظپط±.
+      // نبقي المواعيد الحالية ظاهرة إذا تأخر أو فشل السيرفر.
     }
   }
 
   void _onAppointmentsChanged() {
     if (!mounted) return;
 
-    // ط¥ط°ط§ ط­ط¯ط« ط§ظ„ط­ط¬ط² ط£ط«ظ†ط§ط، ظˆط¬ظˆط¯ ط·ظ„ط¨ ط¬ط§ط±ظچطŒ ظ„ط§ ظ†ظ‡ظ…ظ„ ط§ظ„طھط­ط¯ظٹط«.
-    // ظ†ط¤ط¬ظ„ظ‡ ظ„ظٹط¹ظ…ظ„ ظپظˆط± ط§ظ†طھظ‡ط§ط، ط§ظ„ط·ظ„ط¨ ط§ظ„ط­ط§ظ„ظٹ.
+    // إذا حدث الحجز أثناء وجود طلب جارٍ، لا نهمل التحديث.
+    // نؤجله ليعمل فور انتهاء الطلب الحالي.
     if (isRefreshing) {
       _reloadAppointmentsAfterCurrentRequest = true;
       return;
     }
 
-    // ط§ظ„طھط؛ظٹظٹط± ط§ظ„ظ…ط­ظ„ظٹ ظ…ظˆط¬ظˆط¯ ظپظٹ ظƒط§ط´ ApiServiceطŒ ظ„ط°ظ„ظƒ ظ„ط§ ظ†ط¹ظٹط¯ ط·ظ„ط¨ ط§ظ„ط´ط¨ظƒط©.
+    // التغيير المحلي موجود في كاش ApiService، لذلك لا نعيد طلب الشبكة.
     loadAppointments(
       showSmallLoading: false,
       forceRefresh: false,
@@ -228,11 +228,11 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
       }
 
       setState(() {
-        // ظ„ط§ ظ†ظ…ط³ط­ ط§ظ„ط­ط¬ظˆط²ط§طھ ط§ظ„ظ…ظˆط¬ظˆط¯ط© ط¥ط°ط§ ظپط´ظ„ ط§ظ„ط³ظٹط±ظپط±.
-        // ظ„ط§ ظ†ط¹ط±ط¶ "ظ„ط§ طھظˆط¬ط¯ ظ…ظˆط§ط¹ظٹط¯" ظ‚ط¨ظ„ ط§ط³طھظ„ط§ظ… ظ†طھظٹط¬ط© ط­ظ‚ظٹظ‚ظٹط©.
+        // لا نمسح الحجوزات الموجودة إذا فشل السيرفر.
+        // لا نعرض "لا توجد مواعيد" قبل استلام نتيجة حقيقية.
         firstLoadDone = allAppointments.isNotEmpty;
         isRefreshing = false;
-        // ظ„ط§ ظ†ط¹ط±ط¶ Failed ط£ط«ظ†ط§ط، ط§ظ„طھط£ط®ط± ط£ظˆ ط§ظ„طھط­ط¯ظٹط« ط§ظ„ط®ظ„ظپظٹ.
+        // لا نعرض Failed أثناء التأخر أو التحديث الخلفي.
         errorMessage = null;
       });
 
@@ -322,30 +322,30 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
   bool isConfirmedStatus(String status) {
     return status == 'confirmed' ||
         status == 'confirm' ||
-        status == 'ظ…ط¤ظƒط¯' ||
-        status == 'طھظ… ط§ظ„طھط£ظƒظٹط¯';
+        status == 'مؤكد' ||
+        status == 'تم التأكيد';
   }
 
   bool isCompletedStatus(String status) {
     return status == 'completed' ||
         status == 'complete' ||
         status == 'done' ||
-        status == 'ظ…ظƒطھظ…ظ„' ||
-        status == 'طھظ… ط§ظ„ط§ظƒطھظ…ط§ظ„' ||
-        status == 'طھظ… ط§ظ„ط¥ظƒظ…ط§ظ„';
+        status == 'مكتمل' ||
+        status == 'تم الاكتمال' ||
+        status == 'تم الإكمال';
   }
 
   bool isCancelledStatus(String status) {
     return status == 'cancelled' ||
         status == 'canceled' ||
         status == 'cancel' ||
-        status == 'ظ…ظ„ط؛ظٹ' ||
-        status == 'ظ…ظ„ط؛ظ‰' ||
-        status == 'طھظ… ط§ظ„ط¥ظ„ط؛ط§ط،';
+        status == 'ملغي' ||
+        status == 'ملغى' ||
+        status == 'تم الإلغاء';
   }
 
   bool isPastStatus(String status) {
-    // Confirmed ظٹط¬ط¨ ط£ظ† ظٹط¸ظ‡ط± ط¯ط§ط¦ظ…ط§ظ‹ ط¯ط§ط®ظ„ Past.
+    // Confirmed يجب أن يظهر دائماً داخل Past.
     return isConfirmedStatus(status) ||
         isCompletedStatus(status) ||
         isCancelledStatus(status);
@@ -355,13 +355,13 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
     var text = value?.toString().trim().toLowerCase() ?? '';
 
     const replacements = <String, String>{
-      'ط£': 'ط§',
-      'ط¥': 'ط§',
-      'ط¢': 'ط§',
-      'ط©': 'ظ‡',
-      'ظ‰': 'ظٹ',
-      'ط¤': 'ظˆ',
-      'ط¦': 'ظٹ',
+      'أ': 'ا',
+      'إ': 'ا',
+      'آ': 'ا',
+      'ة': 'ه',
+      'ى': 'ي',
+      'ؤ': 'و',
+      'ئ': 'ي',
     };
 
     replacements.forEach((from, to) {
@@ -409,11 +409,11 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
     const doctorTitles = <String>{
       'dr',
       'doctor',
-      'ط¯',
-      'ط¯ظƒطھظˆط±',
-      'ط¯ظƒطھظˆط±ظ‡',
-      'ط§ظ„ط¯ظƒطھظˆط±',
-      'ط§ظ„ط¯ظƒطھظˆط±ظ‡',
+      'د',
+      'دكتور',
+      'دكتوره',
+      'الدكتور',
+      'الدكتوره',
     };
 
     for (final part in parts) {
@@ -534,7 +534,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
         AppStrings.isArabic ? TextDirection.rtl : TextDirection.ltr,
         decoration: InputDecoration(
           hintText: AppStrings.isArabic
-              ? 'ط§ط¨ط­ط« ط¨ط£ظˆظ„ ط§ط³ظ… ظ„ظ„ط·ط¨ظٹط¨ ط£ظˆ ط±ظ‚ظ… ط§ظ„ظ…ظ„ظپ'
+              ? 'ابحث بأول اسم للطبيب أو رقم الملف'
               : 'Search doctor first name or file number',
           hintStyle: const TextStyle(
             color: Colors.grey,
@@ -581,7 +581,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
             ),
             const SizedBox(width: 10),
             Text(
-              AppStrings.isArabic ? 'طھط­ظ…ظٹظ„...' : 'Loading...',
+              AppStrings.isArabic ? 'تحميل...' : 'Loading...',
               style: const TextStyle(color: Colors.grey),
             ),
           ],
@@ -614,7 +614,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
     const primary = Color(0xFF5B2EFF);
     final currentUserId = UserSession.userId;
 
-    // طھظˆط­ظٹط¯ ط¹ط±ط¶ ط§ظ„طµظپط­ط© ط¹ظ„ظ‰ Chrome ظ…ط¹ ط¨ظ‚ط§ط، ط§ظ„ظ…ظˆط¨ط§ظٹظ„ ط¨ط¹ط±ط¶ظ‡ ط§ظ„ط·ط¨ظٹط¹ظٹ.
+    // توحيد عرض الصفحة على Chrome مع بقاء الموبايل بعرضه الطبيعي.
     final screenWidth = MediaQuery.sizeOf(context).width;
     const double webContentMaxWidth = 520;
     final double visibleContentWidth =
@@ -624,7 +624,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
     final ownsVisibleData =
         currentUserId != null && _appointmentsOwnerUserId == currentUserId;
 
-    // ط­ظ…ط§ظٹط© ظ…ظ† ط¸ظ‡ظˆط± ط¨ظٹط§ظ†ط§طھ ط­ط³ط§ط¨ ط³ط§ط¨ظ‚ ظˆظ„ظˆ ظ„ظ„ط­ط¸ط©.
+    // حماية من ظهور بيانات حساب سابق ولو للحظة.
     final safeAppointments =
     ownsVisibleData ? allAppointments : const <dynamic>[];
     final appointments = filteredAppointments(safeAppointments);
@@ -634,7 +634,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
       child: Scaffold(
         backgroundColor: const Color(0xFFF7F8FC),
         appBar: AppBar(
-          title: Text(AppStrings.isArabic ? 'ظ…ظˆط§ط¹ظٹط¯ظٹ' : 'My Appointments'),
+          title: Text(AppStrings.isArabic ? 'مواعيدي' : 'My Appointments'),
           backgroundColor: Colors.white,
           foregroundColor: Colors.black,
           elevation: 0,
@@ -681,7 +681,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
                                 Expanded(
                                   child: tabButton(
                                     title: AppStrings.isArabic
-                                        ? 'ط§ظ„ظ‚ط§ط¯ظ…ط©'
+                                        ? 'القادمة'
                                         : 'Upcoming',
                                     selected: showUpcoming,
                                     onTap: () {
@@ -697,7 +697,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
                                 Expanded(
                                   child: tabButton(
                                     title:
-                                    AppStrings.isArabic ? 'ط§ظ„ط³ط§ط¨ظ‚ط©' : 'Past',
+                                    AppStrings.isArabic ? 'السابقة' : 'Past',
                                     selected: !showUpcoming,
                                     onTap: () {
                                       if (showUpcoming) {
@@ -827,10 +827,10 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
 
               if (!mounted) return;
 
-              // ط§ظ„ظ…ظˆط¹ط¯ ط£ط¶ظٹظپ ط¥ظ„ظ‰ ظƒط§ط´ ApiService ظپظˆط± ظ†ط¬ط§ط­ ط§ظ„ط­ط¬ط².
-              // ظ†ط¹ط±ط¶ظ‡ ظ…ط¨ط§ط´ط±ط© ط¨ط¯ظˆظ† ط§ظ†طھط¸ط§ط± ط§ظ„ط¯ط§ط´ط¨ظˆط±ط¯ ط£ظˆ ط§ظ„ط¨ط±ظˆظپط§ظٹظ„ ط£ظˆ ط·ظ„ط¨ GET ط¬ط¯ظٹط¯.
+              // الموعد أضيف إلى كاش ApiService فور نجاح الحجز.
+              // نعرضه مباشرة بدون انتظار الداشبورد أو البروفايل أو طلب GET جديد.
               if (booked == true) {
-                // ط§ط¹ط±ط¶ ط§ظ„ظ…ظˆط¹ط¯ ط§ظ„ط°ظٹ ط£ط¶ط§ظپظ‡ ApiService ط¥ظ„ظ‰ ط§ظ„ظƒط§ط´ ظپظˆط±ط§ظ‹.
+                // اعرض الموعد الذي أضافه ApiService إلى الكاش فوراً.
                 final cachedAppointments =
                 await ApiService.getAppointments(forceRefresh: false);
 
@@ -846,7 +846,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
                   errorMessage = null;
                 });
 
-                // ط«ظ… ط­ط¯ظ‘ط« ظ…ظ† ط§ظ„ط³ظٹط±ظپط± طھظ„ظ‚ط§ط¦ظٹط§ظ‹ ط¨ط¯ظˆظ† ط²ط± ط§ظ„طھط­ط¯ظٹط«.
+                // ثم حدّث من السيرفر تلقائياً بدون زر التحديث.
                 unawaited(
                   loadAppointments(
                     showSmallLoading: false,
@@ -1038,10 +1038,10 @@ class AppointmentCard extends StatelessWidget {
     final value = status.toLowerCase();
 
     if (AppStrings.isArabic) {
-      if (value == 'pending') return 'ظ‚ط§ط¯ظ…';
-      if (value == 'confirmed') return 'ظ…ط¤ظƒط¯';
-      if (value == 'completed') return 'ظ…ظƒطھظ…ظ„';
-      if (value == 'cancelled') return 'ظ…ظ„ط؛ظٹ';
+      if (value == 'pending') return 'قادم';
+      if (value == 'confirmed') return 'مؤكد';
+      if (value == 'completed') return 'مكتمل';
+      if (value == 'cancelled') return 'ملغي';
     }
 
     if (value == 'pending') return 'Upcoming';
@@ -1236,7 +1236,7 @@ class AppointmentCard extends StatelessWidget {
                           SnackBar(
                             content: Text(
                               AppStrings.isArabic
-                                  ? 'طھط¹ط°ط± ط­ط°ظپ ط§ظ„ظ…ظˆط¹ط¯طŒ ط­ط§ظˆظ„ظٹ ظ…ط±ط© ط£ط®ط±ظ‰.'
+                                  ? 'تعذر حذف الموعد، حاولي مرة أخرى.'
                                   : 'Could not delete the appointment. Please try again.',
                             ),
                           ),
