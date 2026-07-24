@@ -321,250 +321,263 @@ class _ManageAppointmentsScreenState extends State<ManageAppointmentsScreen> {
                 .where(matchesSearch)
                 .toList();
 
-            return Column(
-              children: [
-                buildSearchField(),
-                Expanded(
-                  child: appointments.isEmpty
-                      ? Center(
-                    child: Text(
-                      AppStrings.noAppointmentsFound,
-                    ),
-                  )
-                      : visibleAppointments.isEmpty
-                      ? Center(
-                    child: Text(
-                      AppStrings.isArabic
-                          ? 'لا توجد نتائج مطابقة'
-                          : 'No matching appointments',
-                    ),
-                  )
-                      : ListView.builder(
-                    padding: const EdgeInsets.all(18),
-                    itemCount:
-                    visibleAppointments.length,
-                    itemBuilder: (context, index) {
-                      final dynamic rawAppointment =
-                      visibleAppointments[index];
+            return LayoutBuilder(
+              builder: (context, constraints) {
+                final double contentWidth =
+                constraints.maxWidth >= 700 ? 485 : constraints.maxWidth;
 
-                      if (rawAppointment is! Map) {
-                        return const SizedBox.shrink();
-                      }
-
-                      final appointment =
-                      Map<String, dynamic>.from(
-                        rawAppointment,
-                      );
-
-                      final status = valueOf(
-                        appointment,
-                        ['status', 'Status'],
-                        'Pending',
-                      );
-
-                      final appointmentId =
-                      appointmentIdOf(
-                        appointment,
-                      );
-
-                      final doctorName =
-                      doctorNameOf(appointment);
-
-                      final appointmentDate = valueOf(
-                        appointment,
-                        [
-                          'appointmentDate',
-                          'AppointmentDate',
-                        ],
-                      );
-
-                      return Container(
-                        margin: const EdgeInsets.only(
-                          bottom: 16,
-                        ),
-                        padding: const EdgeInsets.all(18),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius:
-                          BorderRadius.circular(22),
-                        ),
-                        child: Column(
-                          crossAxisAlignment:
-                          AppStrings.isArabic
-                              ? CrossAxisAlignment.end
-                              : CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              textDirection:
+                return Align(
+                  alignment: Alignment.topCenter,
+                  child: SizedBox(
+                    width: contentWidth,
+                    child: Column(
+                      children: [
+                        buildSearchField(),
+                        Expanded(
+                          child: appointments.isEmpty
+                              ? Center(
+                            child: Text(
+                              AppStrings.noAppointmentsFound,
+                            ),
+                          )
+                              : visibleAppointments.isEmpty
+                              ? Center(
+                            child: Text(
                               AppStrings.isArabic
-                                  ? TextDirection.rtl
-                                  : TextDirection.ltr,
-                              crossAxisAlignment:
-                              CrossAxisAlignment.start,
-                              children: [
-                                const CircleAvatar(
-                                  radius: 28,
-                                  backgroundColor:
-                                  Color(0xffEDE7FF),
-                                  child: Icon(
-                                    Icons.calendar_month,
-                                    color: primary,
-                                  ),
+                                  ? 'لا توجد نتائج مطابقة'
+                                  : 'No matching appointments',
+                            ),
+                          )
+                              : ListView.builder(
+                            padding: const EdgeInsets.all(18),
+                            itemCount:
+                            visibleAppointments.length,
+                            itemBuilder: (context, index) {
+                              final dynamic rawAppointment =
+                              visibleAppointments[index];
+
+                              if (rawAppointment is! Map) {
+                                return const SizedBox.shrink();
+                              }
+
+                              final appointment =
+                              Map<String, dynamic>.from(
+                                rawAppointment,
+                              );
+
+                              final status = valueOf(
+                                appointment,
+                                ['status', 'Status'],
+                                'Pending',
+                              );
+
+                              final appointmentId =
+                              appointmentIdOf(
+                                appointment,
+                              );
+
+                              final doctorName =
+                              doctorNameOf(appointment);
+
+                              final appointmentDate = valueOf(
+                                appointment,
+                                [
+                                  'appointmentDate',
+                                  'AppointmentDate',
+                                ],
+                              );
+
+                              return Container(
+                                margin: const EdgeInsets.only(
+                                  bottom: 16,
                                 ),
-                                const SizedBox(width: 14),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                    AppStrings.isArabic
-                                        ? CrossAxisAlignment.end
-                                        : CrossAxisAlignment.start,
-                                    children: [
-                                      Align(
-                                        alignment:
-                                        AppStrings.isArabic
-                                            ? Alignment.centerRight
-                                            : Alignment.centerLeft,
-                                        child: Text(
-                                          AppStrings.isArabic
-                                              ? 'موعد رقم $appointmentId'
-                                              : '${AppStrings.appointment} #$appointmentId',
-                                          textAlign:
-                                          AppStrings.isArabic
-                                              ? TextAlign.right
-                                              : TextAlign.left,
-                                          style: const TextStyle(
-                                            fontSize: 17,
-                                            fontWeight:
-                                            FontWeight.bold,
+                                padding: const EdgeInsets.all(18),
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  borderRadius:
+                                  BorderRadius.circular(22),
+                                ),
+                                child: Column(
+                                  crossAxisAlignment:
+                                  AppStrings.isArabic
+                                      ? CrossAxisAlignment.end
+                                      : CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      textDirection:
+                                      AppStrings.isArabic
+                                          ? TextDirection.rtl
+                                          : TextDirection.ltr,
+                                      crossAxisAlignment:
+                                      CrossAxisAlignment.start,
+                                      children: [
+                                        const CircleAvatar(
+                                          radius: 28,
+                                          backgroundColor:
+                                          Color(0xffEDE7FF),
+                                          child: Icon(
+                                            Icons.calendar_month,
+                                            color: primary,
                                           ),
                                         ),
-                                      ),
-                                      const SizedBox(height: 7),
-                                      Row(
-                                        textDirection:
-                                        AppStrings.isArabic
-                                            ? TextDirection.rtl
-                                            : TextDirection.ltr,
-                                        children: [
-                                          Expanded(
-                                            child: Text(
-                                              AppStrings
-                                                  .doctorNameByLanguage(
-                                                doctorName,
-                                              ),
-                                              textAlign:
-                                              AppStrings.isArabic
-                                                  ? TextAlign.right
-                                                  : TextAlign.left,
-                                              overflow:
-                                              TextOverflow.ellipsis,
-                                              style:
-                                              const TextStyle(
-                                                color:
-                                                Colors.black87,
-                                                fontWeight:
-                                                FontWeight.w600,
-                                              ),
-                                            ),
-                                          ),
-                                          const SizedBox(width: 12),
-                                          Text(
-                                            statusByLanguage(
-                                              status,
-                                            ),
-                                            textAlign:
+                                        const SizedBox(width: 14),
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment:
                                             AppStrings.isArabic
-                                                ? TextAlign.left
-                                                : TextAlign.right,
-                                            style: TextStyle(
-                                              color:
-                                              statusColor(status),
-                                              fontWeight:
-                                              FontWeight.bold,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                      const SizedBox(height: 5),
-                                      Align(
-                                        alignment:
-                                        AppStrings.isArabic
-                                            ? Alignment.centerRight
-                                            : Alignment.centerLeft,
-                                        child: Text(
-                                          appointmentDate,
-                                          textAlign:
-                                          AppStrings.isArabic
-                                              ? TextAlign.right
-                                              : TextAlign.left,
-                                          style:
-                                          const TextStyle(
-                                            color: Colors.grey,
+                                                ? CrossAxisAlignment.end
+                                                : CrossAxisAlignment.start,
+                                            children: [
+                                              Align(
+                                                alignment:
+                                                AppStrings.isArabic
+                                                    ? Alignment.centerRight
+                                                    : Alignment.centerLeft,
+                                                child: Text(
+                                                  AppStrings.isArabic
+                                                      ? 'موعد رقم $appointmentId'
+                                                      : '${AppStrings.appointment} #$appointmentId',
+                                                  textAlign:
+                                                  AppStrings.isArabic
+                                                      ? TextAlign.right
+                                                      : TextAlign.left,
+                                                  style: const TextStyle(
+                                                    fontSize: 17,
+                                                    fontWeight:
+                                                    FontWeight.bold,
+                                                  ),
+                                                ),
+                                              ),
+                                              const SizedBox(height: 7),
+                                              Row(
+                                                textDirection:
+                                                AppStrings.isArabic
+                                                    ? TextDirection.rtl
+                                                    : TextDirection.ltr,
+                                                children: [
+                                                  Expanded(
+                                                    child: Text(
+                                                      AppStrings
+                                                          .doctorNameByLanguage(
+                                                        doctorName,
+                                                      ),
+                                                      textAlign:
+                                                      AppStrings.isArabic
+                                                          ? TextAlign.right
+                                                          : TextAlign.left,
+                                                      overflow:
+                                                      TextOverflow.ellipsis,
+                                                      style:
+                                                      const TextStyle(
+                                                        color:
+                                                        Colors.black87,
+                                                        fontWeight:
+                                                        FontWeight.w600,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                  const SizedBox(width: 12),
+                                                  Text(
+                                                    statusByLanguage(
+                                                      status,
+                                                    ),
+                                                    textAlign:
+                                                    AppStrings.isArabic
+                                                        ? TextAlign.left
+                                                        : TextAlign.right,
+                                                    style: TextStyle(
+                                                      color:
+                                                      statusColor(status),
+                                                      fontWeight:
+                                                      FontWeight.bold,
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                              const SizedBox(height: 5),
+                                              Align(
+                                                alignment:
+                                                AppStrings.isArabic
+                                                    ? Alignment.centerRight
+                                                    : Alignment.centerLeft,
+                                                child: Text(
+                                                  appointmentDate,
+                                                  textAlign:
+                                                  AppStrings.isArabic
+                                                      ? TextAlign.right
+                                                      : TextAlign.left,
+                                                  style:
+                                                  const TextStyle(
+                                                    color: Colors.grey,
+                                                  ),
+                                                ),
+                                              ),
+                                            ],
                                           ),
                                         ),
-                                      ),
-                                    ],
-                                  ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 14),
+                                    Row(
+                                      textDirection:
+                                      AppStrings.isArabic
+                                          ? TextDirection.rtl
+                                          : TextDirection.ltr,
+                                      children: [
+                                        Expanded(
+                                          child: statusButton(
+                                            title:
+                                            AppStrings.confirm,
+                                            color: Colors.green,
+                                            onTap: () {
+                                              updateStatus(
+                                                appointment,
+                                                'Confirmed',
+                                              );
+                                            },
+                                          ),
+                                        ),
+                                        const SizedBox(width: 8),
+                                        Expanded(
+                                          child: statusButton(
+                                            title:
+                                            AppStrings.complete,
+                                            color: Colors.blue,
+                                            onTap: () {
+                                              updateStatus(
+                                                appointment,
+                                                'Completed',
+                                              );
+                                            },
+                                          ),
+                                        ),
+                                        const SizedBox(width: 8),
+                                        Expanded(
+                                          child: statusButton(
+                                            title: AppStrings
+                                                .cancelAppointment,
+                                            color: Colors.red,
+                                            onTap: () {
+                                              updateStatus(
+                                                appointment,
+                                                'Cancelled',
+                                              );
+                                            },
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ],
                                 ),
-                              ],
-                            ),
-                            const SizedBox(height: 14),
-                            Row(
-                              textDirection:
-                              AppStrings.isArabic
-                                  ? TextDirection.rtl
-                                  : TextDirection.ltr,
-                              children: [
-                                Expanded(
-                                  child: statusButton(
-                                    title:
-                                    AppStrings.confirm,
-                                    color: Colors.green,
-                                    onTap: () {
-                                      updateStatus(
-                                        appointment,
-                                        'Confirmed',
-                                      );
-                                    },
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: statusButton(
-                                    title:
-                                    AppStrings.complete,
-                                    color: Colors.blue,
-                                    onTap: () {
-                                      updateStatus(
-                                        appointment,
-                                        'Completed',
-                                      );
-                                    },
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: statusButton(
-                                    title: AppStrings
-                                        .cancelAppointment,
-                                    color: Colors.red,
-                                    onTap: () {
-                                      updateStatus(
-                                        appointment,
-                                        'Cancelled',
-                                      );
-                                    },
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
+                              );
+                            },
+                          ),
                         ),
-                      );
-                    },
+                      ],
+                    ),
                   ),
-                ),
-              ],
+                );
+              },
             );
           },
         ),

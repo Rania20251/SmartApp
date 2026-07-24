@@ -1044,137 +1044,150 @@ class _ManageDoctorsScreenState extends State<ManageDoctorsScreen> {
               return Center(child: Text(AppStrings.noDoctorsFound));
             }
 
-            return ListView.builder(
-              padding: const EdgeInsets.all(18),
-              itemCount: doctors.length,
-              itemBuilder: (context, index) {
-                final doctor = doctors[index];
+            return LayoutBuilder(
+              builder: (context, constraints) {
+                final double contentWidth =
+                constraints.maxWidth >= 700 ? 485 : constraints.maxWidth;
 
-                final doctorId =
-                    int.tryParse(doctor['doctorId']?.toString() ?? '0') ?? 0;
+                return Align(
+                  alignment: Alignment.topCenter,
+                  child: SizedBox(
+                    width: contentWidth,
+                    child: ListView.builder(
+                      padding: const EdgeInsets.all(18),
+                      itemCount: doctors.length,
+                      itemBuilder: (context, index) {
+                        final doctor = doctors[index];
 
-                final imagePath = getDoctorImagePath(doctor);
-                final specialtyName = getSpecialtyNameByLanguage(doctor);
+                        final doctorId =
+                            int.tryParse(doctor['doctorId']?.toString() ?? '0') ?? 0;
 
-                return RepaintBoundary(
-                  child: Container(
-                    margin: const EdgeInsets.only(bottom: 16),
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(22),
-                    ),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      children: [
-                        SizedBox(
-                          width: 62,
-                          height: 62,
-                          child: doctorImage(imagePath),
-                        ),
-                        const SizedBox(width: 14),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                getDoctorNameByLanguage(doctor),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                textAlign: AppStrings.isArabic
-                                    ? TextAlign.right
-                                    : TextAlign.left,
-                                textDirection: AppStrings.isArabic
-                                    ? TextDirection.rtl
-                                    : TextDirection.ltr,
-                                style: const TextStyle(
-                                  fontSize: 17,
-                                  height: 1.15,
-                                  fontWeight: FontWeight.bold,
+                        final imagePath = getDoctorImagePath(doctor);
+                        final specialtyName = getSpecialtyNameByLanguage(doctor);
+
+                        return RepaintBoundary(
+                          child: Container(
+                            margin: const EdgeInsets.only(bottom: 16),
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(22),
+                            ),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.center,
+                              children: [
+                                SizedBox(
+                                  width: 62,
+                                  height: 62,
+                                  child: doctorImage(imagePath),
                                 ),
-                              ),
-                              const SizedBox(height: 5),
-                              Text(
-                                specialtyName,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                textAlign: AppStrings.isArabic
-                                    ? TextAlign.right
-                                    : TextAlign.left,
-                                style: const TextStyle(
-                                  color: Colors.grey,
-                                  fontSize: 14,
+                                const SizedBox(width: 14),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        getDoctorNameByLanguage(doctor),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        textAlign: AppStrings.isArabic
+                                            ? TextAlign.right
+                                            : TextAlign.left,
+                                        textDirection: AppStrings.isArabic
+                                            ? TextDirection.rtl
+                                            : TextDirection.ltr,
+                                        style: const TextStyle(
+                                          fontSize: 17,
+                                          height: 1.15,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 5),
+                                      Text(
+                                        specialtyName,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        textAlign: AppStrings.isArabic
+                                            ? TextAlign.right
+                                            : TextAlign.left,
+                                        style: const TextStyle(
+                                          color: Colors.grey,
+                                          fontSize: 14,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 6),
+                                      Text(
+                                        doctor['email']?.toString() ?? '',
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        textAlign: AppStrings.isArabic
+                                            ? TextAlign.right
+                                            : TextAlign.left,
+                                        style: const TextStyle(
+                                          fontSize: 12,
+                                          color: Colors.black54,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
                                 ),
-                              ),
-                              const SizedBox(height: 6),
-                              Text(
-                                doctor['email']?.toString() ?? '',
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                textAlign: AppStrings.isArabic
-                                    ? TextAlign.right
-                                    : TextAlign.left,
-                                style: const TextStyle(
-                                  fontSize: 12,
-                                  color: Colors.black54,
+                                const SizedBox(width: 8),
+                                SizedBox(
+                                  width: 116,
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.end,
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      SizedBox(
+                                        width: 36,
+                                        height: 36,
+                                        child: IconButton(
+                                          padding: EdgeInsets.zero,
+                                          tooltip: AppStrings.changeImage,
+                                          icon: const Icon(
+                                            Icons.image,
+                                            color: Colors.purple,
+                                            size: 24,
+                                          ),
+                                          onPressed: () => changeDoctorImage(doctor),
+                                        ),
+                                      ),
+                                      SizedBox(
+                                        width: 36,
+                                        height: 36,
+                                        child: IconButton(
+                                          padding: EdgeInsets.zero,
+                                          tooltip: AppStrings.edit,
+                                          icon: const Icon(
+                                            Icons.edit,
+                                            color: Colors.blue,
+                                            size: 24,
+                                          ),
+                                          onPressed: () => openEditDoctor(doctor),
+                                        ),
+                                      ),
+                                      SizedBox(
+                                        width: 36,
+                                        height: 36,
+                                        child: IconButton(
+                                          padding: EdgeInsets.zero,
+                                          tooltip: AppStrings.delete,
+                                          icon: const Icon(
+                                            Icons.delete,
+                                            color: Colors.red,
+                                            size: 24,
+                                          ),
+                                          onPressed: () => confirmDelete(doctorId),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
                                 ),
-                              ),
-                            ],
+                              ],
+                            ),
                           ),
-                        ),
-                        const SizedBox(width: 8),
-                        SizedBox(
-                          width: 116,
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.end,
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              SizedBox(
-                                width: 36,
-                                height: 36,
-                                child: IconButton(
-                                  padding: EdgeInsets.zero,
-                                  tooltip: AppStrings.changeImage,
-                                  icon: const Icon(
-                                    Icons.image,
-                                    color: Colors.purple,
-                                    size: 24,
-                                  ),
-                                  onPressed: () => changeDoctorImage(doctor),
-                                ),
-                              ),
-                              SizedBox(
-                                width: 36,
-                                height: 36,
-                                child: IconButton(
-                                  padding: EdgeInsets.zero,
-                                  tooltip: AppStrings.edit,
-                                  icon: const Icon(
-                                    Icons.edit,
-                                    color: Colors.blue,
-                                    size: 24,
-                                  ),
-                                  onPressed: () => openEditDoctor(doctor),
-                                ),
-                              ),
-                              SizedBox(
-                                width: 36,
-                                height: 36,
-                                child: IconButton(
-                                  padding: EdgeInsets.zero,
-                                  tooltip: AppStrings.delete,
-                                  icon: const Icon(
-                                    Icons.delete,
-                                    color: Colors.red,
-                                    size: 24,
-                                  ),
-                                  onPressed: () => confirmDelete(doctorId),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
+                        );
+                      },
                     ),
                   ),
                 );
